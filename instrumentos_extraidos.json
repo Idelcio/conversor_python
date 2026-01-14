@@ -1,0 +1,80 @@
+{
+  "data_extracao": "2026-01-05T14:39:20.524849",
+  "total_instrumentos": 2,
+  "instrumentos": [
+    {
+      "identificacao": "ALT-001",
+      "nome": "Medidor de Altura de 0 a 300 mm, com resolução de 0,01 mm - Digital",
+      "fabricante": "DIGIMESS",
+      "modelo": "n/i",
+      "numero_serie": "1804280",
+      "descricao": "Medidor de Altura de 0 a 300 mm, com resolução de 0,01 mm - Digital",
+      "periodicidade": 12,
+      "departamento": "AV UNISINOS, 950 Cristo Rei - São Leopoldo/RS",
+      "responsavel": "OTIMIZARE SISTEMAS INTELIGENTES LTDA",
+      "tipo_familia": "Medidor de Altura de 0 a 300 mm, com resolução de 0,01 mm - Digital",
+      "serie_desenv": null,
+      "criticidade": null,
+      "motivo_calibracao": "Calibração Periódica",
+      "status": "Sem Calibração",
+      "quantidade": 1,
+      "data_calibracao": "2024-09-11",
+      "data_emissao": "2024-09-11",
+      "grandezas": [
+        {
+          "servicos": [
+            "QPC047 - Calibração de Micrometros Internos"
+          ],
+          "tolerancia_processo": "1804280",
+          "tolerancia_simetrica": true,
+          "unidade": "mm",
+          "resolucao": "0.01 mm",
+          "criterio_aceitacao": "Comparação com anel liso cilíndrico / Comparação com máquina de medição linear",
+          "regra_decisao_id": 1,
+          "faixa_nominal": "0 a 300 mm",
+          "classe_norma": null,
+          "classificacao": null,
+          "faixa_uso": null
+        }
+      ],
+      "arquivo_origem": "032369-2024-2024-09-11.pdf"
+    },
+    {
+      "identificacao": "CLP002 Nº Certificado: 36839/20 Data de Calibração: 09/11/2020",
+      "nome": "Canal de Temperatura Sensor de entrada tipo: \"PT100\" Data de Emissão: 16/11/2020",
+      "fabricante": "--- Modelo:--- Nº de Série: ---",
+      "modelo": "--- Nº de Série: ---",
+      "numero_serie": "n/i",
+      "descricao": "Canal de Temperatura Sensor de entrada tipo: \"PT100\" Data de Emissão: 16/11/2020",
+      "periodicidade": 12,
+      "departamento": "RS 118 Nº 12.707 KM 11, GLP Gravataí, Gravataí - RS",
+      "responsavel": "yapp brazil automotive systems",
+      "tipo_familia": "Canal de Temperatura Sensor de entrada tipo: \"PT100\" Data de Emissão: 16/11/2020",
+      "serie_desenv": null,
+      "criticidade": null,
+      "motivo_calibracao": "Calibração Periódica",
+      "status": "Sem Calibração",
+      "quantidade": 1,
+      "data_calibracao": "2020-11-09",
+      "data_emissao": "2020-11-16",
+      "grandezas": [
+        {
+          "servicos": [
+            "QPC066F -Calibração de Indicadores, Controladores e Registradores de temperatura-Entrada Termoresistência."
+          ],
+          "tolerancia_processo": "0,20",
+          "tolerancia_simetrica": true,
+          "unidade": "°C",
+          "resolucao": "0.01 °C",
+          "criterio_aceitacao": "Comparação Direta",
+          "regra_decisao_id": 1,
+          "faixa_nominal": "0 a 300 °C",
+          "classe_norma": null,
+          "classificacao": null,
+          "faixa_uso": null
+        }
+      ],
+      "arquivo_origem": "36839-20_CLP-002.pdf"
+    }
+  ]
+}

@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extrator de Certificados - Gocal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2em;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 0.9em;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+            background: #f8f9ff;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f1ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e8e9ff;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        .upload-text {
+            color: #333;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+
+        .upload-hint {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .file-list {
+            margin-top: 30px;
+        }
+
+        .file-item {
+            background: #f8f9ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 4px solid #667eea;
+        }
+
+        .file-name {
+            color: #333;
+            font-weight: 500;
+        }
+
+        .file-size {
+            color: #666;
+            font-size: 0.9em;
+            margin-left: 10px;
+        }
+
+        .remove-btn {
+            background: #ff4757;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .remove-btn:hover {
+            background: #ff3838;
+        }
+
+        .process-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 10px;
+            font-size: 1.1em;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 20px;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        .process-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .process-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .results {
+            display: none;
+            margin-top: 30px;
+            padding: 20px;
+            background: #e8f5e9;
+            border-radius: 10px;
+            border-left: 4px solid #4caf50;
+        }
+
+        .results h3 {
+            color: #2e7d32;
+            margin-bottom: 15px;
+        }
+
+        .download-btn {
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-top: 10px;
+            transition: all 0.3s;
+        }
+
+        .download-btn:hover {
+            background: #45a049;
+        }
+
+        .error {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            background: #ffebee;
+            border-radius: 10px;
+            border-left: 4px solid #f44336;
+            color: #c62828;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>📄 Extrator de Certificados</h1>
+        <p class="subtitle">Sistema de extração de dados de certificados de calibração para o Gocal</p>
+
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📁</div>
+            <div class="upload-text">Clique ou arraste os PDFs aqui</div>
+            <div class="upload-hint">Suporta múltiplos arquivos PDF</div>
+        </div>
+
+        <input type="file" id="fileInput" accept=".pdf" multiple>
+
+        <div class="file-list" id="fileList"></div>
+
+        <button class="process-btn" id="processBtn" disabled>
+            Processar Certificados
+        </button>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processando certificados, aguarde...</p>
+        </div>
+
+        <div class="error" id="error"></div>
+
+        <div class="results" id="results">
+            <h3>✅ Processamento Concluído!</h3>
+            <div class="stats" id="stats"></div>
+
+            <!-- Campo para User ID -->
+            <div style="margin-top: 20px; padding: 15px; background: white; border-radius: 8px;">
+                <label for="userIdInput" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">
+                    🆔 User ID para SQL (Gocal):
+                </label>
+                <input type="number" id="userIdInput" min="1" value="1" placeholder="Ex: 53 para usuário Idelcio"
+                    style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 8px; font-size: 1em;">
+                <small style="color: #666; display: block; margin-top: 5px;">
+                    Digite o ID do usuário/empresa no Gocal. Exemplo: se criou "Idelcio" com ID 53, digite 53.
+                </small>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <button class="download-btn" onclick="downloadJSON()">
+                    📥 Baixar JSON
+                </button>
+                <button class="download-btn" onclick="downloadSQL()">
+                    📥 Baixar SQL
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedFiles = [];
+        let resultData = null;
+
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const processBtn = document.getElementById('processBtn');
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+        const error = document.getElementById('error');
+
+        // Click para abrir seletor de arquivos
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        // Seleção de arquivos
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            const pdfFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+
+            if (pdfFiles.length === 0) {
+                showError('Por favor, selecione apenas arquivos PDF');
+                return;
+            }
+
+            selectedFiles = [...selectedFiles, ...pdfFiles];
+            updateFileList();
+            processBtn.disabled = false;
+            hideError();
+        }
+
+        function updateFileList() {
+            fileList.innerHTML = '';
+
+            selectedFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+
+                const fileInfo = document.createElement('div');
+                fileInfo.innerHTML = `
+                    <span class="file-name">${file.name}</span>
+                    <span class="file-size">(${formatFileSize(file.size)})</span>
+                `;
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-btn';
+                removeBtn.textContent = 'Remover';
+                removeBtn.onclick = () => removeFile(index);
+
+                fileItem.appendChild(fileInfo);
+                fileItem.appendChild(removeBtn);
+                fileList.appendChild(fileItem);
+            });
+        }
+
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updateFileList();
+
+            if (selectedFiles.length === 0) {
+                processBtn.disabled = true;
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        // Processar PDFs
+        processBtn.addEventListener('click', async () => {
+            const formData = new FormData();
+            selectedFiles.forEach(file => formData.append('pdfs', file));
+
+            loading.style.display = 'block';
+            results.style.display = 'none';
+            hideError();
+            processBtn.disabled = true;
+
+            try {
+                const response = await fetch('/processar', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Erro ao processar PDFs');
+                }
+
+                resultData = data;
+                showResults(data);
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                loading.style.display = 'none';
+                processBtn.disabled = false;
+            }
+        });
+
+        function showResults(data) {
+            const stats = document.getElementById('stats');
+            stats.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-number">${data.total_instrumentos}</div>
+                    <div class="stat-label">Instrumentos</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${selectedFiles.length}</div>
+                    <div class="stat-label">PDFs Processados</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${data.total_grandezas || 0}</div>
+                    <div class="stat-label">Grandezas</div>
+                </div>
+            `;
+
+            results.style.display = 'block';
+        }
+
+        function showError(message) {
+            error.textContent = '❌ ' + message;
+            error.style.display = 'block';
+        }
+
+        function hideError() {
+            error.style.display = 'none';
+        }
+
+        function downloadJSON() {
+            if (!resultData) return;
+
+            const blob = new Blob([JSON.stringify(resultData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'instrumentos_' + new Date().toISOString().split('T')[0] + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        async function downloadSQL() {
+            if (!resultData) return;
+
+            try {
+                // Obtém o user_id do input
+                const userId = parseInt(document.getElementById('userIdInput').value) || 1;
+
+                // Valida user_id
+                if (userId <= 0) {
+                    showError('User ID deve ser maior que 0');
+                    return;
+                }
+
+                // Adiciona user_id aos dados
+                const dataWithUserId = {
+                    ...resultData,
+                    user_id: userId
+                };
+
+                const response = await fetch('/gerar-sql', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dataWithUserId)
+                });
+
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `gocal_user_${userId}_${new Date().toISOString().split('T')[0]}.sql`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                showError('Erro ao gerar SQL: ' + err.message);
+            }
+        }
+    </script>
+</body>
+
+</html>

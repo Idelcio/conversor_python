@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python app.py:*)",
+      "Bash(python -m venv:*)",
+      "Bash(venvScriptspip install -r requirements.txt)",
+      "Bash(curl:*)",
+      "Bash(python teste_upload.py:*)",
+      "Bash(python processar_pdfs.py:*)",
+      "Bash(python inserir_banco.py:*)",
+      "Bash(python criar_tabelas.py:*)",
+      "Bash(dir:*)",
+      "Bash(python:*)"
+    ]
+  }
+}

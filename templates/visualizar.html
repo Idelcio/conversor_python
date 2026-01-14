@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador de Instrumentos - Gocal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f7fa;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 30px 60px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            text-align: center;
+            min-width: 300px;
+        }
+
+        .stat-number {
+            font-size: 3em;
+            font-weight: bold;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            color: #666;
+            margin-top: 10px;
+            font-size: 0.95em;
+        }
+
+        .search-bar {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid #e1e8ed;
+            border-radius: 10px;
+            font-size: 1em;
+            transition: all 0.3s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .instruments-grid {
+            display: grid;
+            gap: 20px;
+        }
+
+        .instrument-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s;
+            border-left: 5px solid #667eea;
+            cursor: pointer;
+        }
+
+        .instrument-card:hover {
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+        }
+
+        .instrument-card.expanded {
+            border-left-color: #764ba2;
+        }
+
+        .instrument-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f5f7fa;
+        }
+
+        .instrument-title {
+            flex: 1;
+        }
+
+        .instrument-id {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .instrument-name {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .instrument-status {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .status-aprovado {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-reprovado {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-sem-calibracao {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-pendente {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .instrument-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .detail-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .detail-value {
+            color: #333;
+            font-size: 1em;
+        }
+
+        .grandezas-section {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .grandezas-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.05em;
+        }
+
+        .grandeza-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 3px solid #764ba2;
+        }
+
+        .grandeza-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .grandeza-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: #666;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #f5c6cb;
+            margin: 20px 0;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .empty-state h3 {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+        }
+
+        .servicos-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .servico-tag {
+            background: #e8e9ff;
+            color: #667eea;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.85em;
+        }
+
+        .expand-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 15px;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        .expand-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .details-section {
+            display: none;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #f5f7fa;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        .details-section.visible {
+            display: block;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .info-section {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .info-section h4 {
+            color: #667eea;
+            margin-bottom: 12px;
+            font-size: 1.05em;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+
+        .badge-new {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .delete-button {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85em;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .delete-button:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3);
+        }
+
+        .instrument-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>Visualizador de Instrumentos</h1>
+        <p>Instrumentos extraídos e cadastrados no banco de dados</p>
+    </div>
+
+    <div class="stats" id="stats">
+        <div class="stat-card">
+            <div class="stat-number" id="totalInstrumentos">0</div>
+            <div class="stat-label">Instrumentos Cadastrados</div>
+        </div>
+    </div>
+
+    <div class="search-bar">
+        <input type="text" class="search-input" id="searchInput"
+            placeholder="Buscar por identificação, nome, fabricante, modelo...">
+    </div>
+
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Carregando instrumentos...</p>
+    </div>
+
+    <div id="error" class="error" style="display: none;"></div>
+
+    <div id="emptyState" class="empty-state" style="display: none;">
+        <h3>Nenhum instrumento encontrado</h3>
+        <p>Execute o script de inserção para processar PDFs e popular o banco de dados.</p>
+        <p style="margin-top: 10px;"><code>python inserir_banco.py</code></p>
+    </div>
+
+    <div class="instruments-grid" id="instrumentsGrid"></div>
+
+    <script>
+        let todosInstrumentos = [];
+
+        async function carregarInstrumentos() {
+            try {
+                const response = await fetch('/api/instrumentos');
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Erro ao carregar instrumentos');
+                }
+
+                todosInstrumentos = data.instrumentos;
+                atualizarEstatisticas(data);
+                renderizarInstrumentos(todosInstrumentos);
+
+            } catch (err) {
+                mostrarErro(err.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function atualizarEstatisticas(data) {
+            document.getElementById('totalInstrumentos').textContent = data.total;
+        }
+
+        function renderizarInstrumentos(instrumentos) {
+            const grid = document.getElementById('instrumentsGrid');
+            const emptyState = document.getElementById('emptyState');
+
+            if (instrumentos.length === 0) {
+                grid.innerHTML = '';
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+
+            grid.innerHTML = instrumentos.map((inst, index) => {
+                const temData = inst.data_calibracao;
+                const alertaData = temData ? '' : ' ⚠️';
+                const titulo = inst.identificacao && inst.identificacao !== 'N/I'
+                    ? `📄 ${inst.identificacao}${alertaData}`
+                    : `📄 ${inst.nome || 'Sem nome'}${alertaData}`;
+
+                return `
+                <div class="instrument-card" data-index="${index}" data-id="${inst.id}">
+                    <div class="instrument-header">
+                        <div class="instrument-title">
+                            <div class="instrument-id">${titulo}</div>
+                            <div class="instrument-name">${inst.nome || 'Sem nome'}</div>
+                        </div>
+                        <div class="instrument-actions">
+                            <div class="instrument-status ${getStatusClass(inst.status)}">
+                                ${inst.status || 'Sem Status'}
+                            </div>
+                            <button class="delete-button" onclick="deletarInstrumento(${inst.id}, event)" title="Deletar instrumento">
+                                🗑️ Deletar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="instrument-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Fabricante</span>
+                            <span class="detail-value">${inst.fabricante || 'N/I'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Modelo</span>
+                            <span class="detail-value">${inst.modelo || 'N/I'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Nº Série</span>
+                            <span class="detail-value">${inst.numero_serie || 'N/I'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Data Calibração</span>
+                            <span class="detail-value">${inst.data_calibracao || 'N/I'}</span>
+                        </div>
+                    </div>
+
+                    <button class="expand-button" onclick="toggleDetails(${index}, event)">
+                        <span class="expand-text">Ver Todas as Informações ▼</span>
+                    </button>
+
+                    <div class="details-section" id="details-${index}">
+                        ${renderizarDetalhesCompletos(inst)}
+                    </div>
+                </div>
+            `;
+            }).join('');
+        }
+
+        function renderizarGrandezas(grandezas) {
+            if (!grandezas || grandezas.length === 0) return '';
+
+            return `
+                <div class="grandezas-section">
+                    <div class="grandezas-title">Grandezas (${grandezas.length})</div>
+                    ${grandezas.map(g => `
+                        <div class="grandeza-item">
+                            <div class="grandeza-grid">
+                                <div class="detail-item">
+                                    <span class="detail-label">Unidade</span>
+                                    <span class="detail-value">${g.unidade || 'N/I'}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Resolução</span>
+                                    <span class="detail-value">${g.resolucao || 'N/I'}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Faixa Nominal</span>
+                                    <span class="detail-value">${g.faixa_nominal || 'N/I'}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Tolerância</span>
+                                    <span class="detail-value">${g.tolerancia_processo || 'N/I'}</span>
+                                </div>
+                            </div>
+                            ${g.servicos && g.servicos.length > 0 ? `
+                                <div style="margin-top: 10px;">
+                                    <span class="detail-label">Serviços:</span>
+                                    <div class="servicos-tags">
+                                        ${g.servicos.map(s => `<span class="servico-tag">${s}</span>`).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function getStatusClass(status) {
+            if (!status) return 'status-sem-calibracao';
+
+            const s = status.toLowerCase();
+            if (s.includes('aprovado')) return 'status-aprovado';
+            if (s.includes('reprovado')) return 'status-reprovado';
+            if (s.includes('pendente')) return 'status-pendente';
+            return 'status-sem-calibracao';
+        }
+
+        function renderizarDetalhesCompletos(inst) {
+            return `
+                <!-- Título centralizado como no Gocal -->
+                <div style="text-align: center; font-size: 1.5em; font-weight: bold; color: #333; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #e0e0e0;">
+                    ${inst.identificacao || 'N/I'}
+                </div>
+
+                <!-- Seção: Informações Básicas de Identificação -->
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                    <h3 style="color: #333; margin-bottom: 20px; font-size: 1.1em; font-weight: 600;">Informações Básicas de Identificação</h3>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px 40px;">
+                        <!-- Coluna Esquerda -->
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Identificação:</span>
+                            <span class="detail-value" style="color: #007bff;">${inst.identificacao || 'n/i'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Fabricante:</span>
+                            <span class="detail-value">${inst.fabricante || 'n/i'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Nº de Série:</span>
+                            <span class="detail-value">${inst.numero_serie || 'n/i'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Descrição:</span>
+                            <span class="detail-value">${inst.descricao || 'n/i'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Resolução:</span>
+                            <span class="detail-value">${inst.grandezas && inst.grandezas[0] ? inst.grandezas[0].resolucao : 'n/i'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Periodicidade:</span>
+                            <span class="detail-value">${inst.periodicidade || 'n/i'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Responsável:</span>
+                            <span class="detail-value">${inst.responsavel || 'Não informado'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Série/Desenho:</span>
+                            <span class="detail-value">${inst.serie_desenv || 'n/i'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Motivo da Calibração:</span>
+                            <span class="detail-value">${inst.motivo_calibracao || 'Periodicidade'}</span>
+                        </div>
+
+                        <!-- Coluna Direita -->
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Nome:</span>
+                            <span class="detail-value">${inst.nome || 'n/i'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Modelo:</span>
+                            <span class="detail-value">${inst.modelo || 'n/i'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Tolerância do Processo:</span>
+                            <span class="detail-value">${inst.grandezas && inst.grandezas[0] ? inst.grandezas[0].tolerancia_processo : 'n/i'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Unidade:</span>
+                            <span class="detail-value">${inst.grandezas && inst.grandezas[0] ? inst.grandezas[0].unidade : 'n/i'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Critério de Aceitação:</span>
+                            <span class="detail-value">${inst.grandezas && inst.grandezas[0] ? (inst.grandezas[0].criterio_aceitacao || 'n/i') : 'n/i'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Localização:</span>
+                            <span class="detail-value">${inst.departamento || 'Sem registro'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Status:</span>
+                            <span class="detail-value" style="color: ${inst.status && inst.status.includes('Aprovado') ? '#28a745' : '#856404'}; font-weight: bold;">${inst.status || 'n/i'}</span>
+                        </div>
+                        
+                        <div class="detail-item" style="margin-bottom: 12px;">
+                            <span class="detail-label" style="font-weight: 600; color: #333;">Criticidade:</span>
+                            <span class="detail-value">${inst.criticidade || 'n/i'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                ${inst.grandezas && inst.grandezas.length > 0 ? renderizarGrandezasDetalhadas(inst.grandezas) : ''}
+            `;
+        }
+
+        function renderizarGrandezasDetalhadas(grandezas) {
+            if (!grandezas || grandezas.length === 0) return '';
+
+            return `
+                ${grandezas.map((g, i) => `
+                    <!-- Seção: Grandeza ${i + 1} -->
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                        <h3 style="color: #333; margin-bottom: 20px; font-size: 1.1em; font-weight: 600;">Grandeza ${i + 1}</h3>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px 40px;">
+                            <!-- Serviços INMETRO (ocupa toda a largura) -->
+                            <div class="detail-item" style="margin-bottom: 12px; grid-column: 1 / -1;">
+                                <span class="detail-label" style="font-weight: 600; color: #333;">Serviços (INMETRO):</span>
+                                <div style="margin-top: 8px;">
+                                    ${g.servicos && g.servicos.length > 0 ?
+                    g.servicos.map(s => `<span style="display: inline-block; background: #007bff; color: white; padding: 5px 12px; border-radius: 4px; margin-right: 8px; margin-bottom: 8px; font-size: 0.9em;">${s}</span>`).join('') :
+                    '<span style="color: #666;">n/i</span>'
+                }
+                                </div>
+                            </div>
+
+                            <!-- Coluna Esquerda -->
+                            <div class="detail-item" style="margin-bottom: 12px;">
+                                <span class="detail-label" style="font-weight: 600; color: #333;">Tolerância do Processo:</span>
+                                <span class="detail-value">${g.tolerancia_processo || 'n/i'}</span>
+                            </div>
+
+                            <div class="detail-item" style="margin-bottom: 12px;">
+                                <span class="detail-label" style="font-weight: 600; color: #333;">Resolução:</span>
+                                <span class="detail-value">${g.resolucao || 'n/i'}</span>
+                            </div>
+
+                            <div class="detail-item" style="margin-bottom: 12px;">
+                                <span class="detail-label" style="font-weight: 600; color: #333;">Regra de Decisão:</span>
+                                <span class="detail-value">${g.regra_decisao_id || 'n/i'}</span>
+                            </div>
+
+                            <div class="detail-item" style="margin-bottom: 12px;">
+                                <span class="detail-label" style="font-weight: 600; color: #333;">Classe/Norma:</span>
+                                <span class="detail-value">${g.classe_norma || 'Não informado'}</span>
+                            </div>
+
+                            <div class="detail-item" style="margin-bottom: 12px;">
+                                <span class="detail-label" style="font-weight: 600; color: #333;">Faixa de Uso:</span>
+                                <span class="detail-value">${g.faixa_uso || 'n/i'}</span>
+                            </div>
+
+                            <!-- Coluna Direita -->
+                            <div class="detail-item" style="margin-bottom: 12px;">
+                                <span class="detail-label" style="font-weight: 600; color: #333;">Unidade:</span>
+                                <span class="detail-value">${g.unidade || 'n/i'}</span>
+                            </div>
+
+                            <div class="detail-item" style="margin-bottom: 12px;">
+                                <span class="detail-label" style="font-weight: 600; color: #333;">Critério de Aceitação:</span>
+                                <span class="detail-value">${g.criterio_aceitacao || 'n/i'}</span>
+                            </div>
+
+                            <div class="detail-item" style="margin-bottom: 12px;">
+                                <span class="detail-label" style="font-weight: 600; color: #333;">Faixa Nominal:</span>
+                                <span class="detail-value">${g.faixa_nominal || 'n/i'}</span>
+                            </div>
+
+                            <div class="detail-item" style="margin-bottom: 12px;">
+                                <span class="detail-label" style="font-weight: 600; color: #333;">Classificação:</span>
+                                <span class="detail-value">${g.classificacao || 'n/i'}</span>
+                            </div>
+                        </div>
+                    </div>
+                `).join('')}
+            `;
+        }
+
+        function toggleDetails(index, event) {
+            event.stopPropagation();
+            const detailsSection = document.getElementById(`details-${index}`);
+            const card = document.querySelector(`[data-index="${index}"]`);
+            const button = event.currentTarget;
+
+            if (detailsSection.classList.contains('visible')) {
+                detailsSection.classList.remove('visible');
+                card.classList.remove('expanded');
+                button.querySelector('.expand-text').textContent = 'Ver Todas as Informações ▼';
+            } else {
+                detailsSection.classList.add('visible');
+                card.classList.add('expanded');
+                button.querySelector('.expand-text').textContent = 'Ocultar Informações ▲';
+            }
+        }
+
+        function formatarData(data) {
+            if (!data) return 'N/I';
+            const d = new Date(data);
+            return d.toLocaleDateString('pt-BR');
+        }
+
+        function formatarDataHora(data) {
+            if (!data) return 'N/I';
+            const d = new Date(data);
+            return d.toLocaleString('pt-BR');
+        }
+
+        function mostrarErro(mensagem) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = 'Erro: ' + mensagem;
+            errorDiv.style.display = 'block';
+        }
+
+        // Busca
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const termo = e.target.value.toLowerCase();
+
+            const filtrados = todosInstrumentos.filter(inst => {
+                return (
+                    (inst.identificacao && inst.identificacao.toLowerCase().includes(termo)) ||
+                    (inst.nome && inst.nome.toLowerCase().includes(termo)) ||
+                    (inst.fabricante && inst.fabricante.toLowerCase().includes(termo)) ||
+                    (inst.modelo && inst.modelo.toLowerCase().includes(termo)) ||
+                    (inst.numero_serie && inst.numero_serie.toLowerCase().includes(termo))
+                );
+            });
+
+            renderizarInstrumentos(filtrados);
+        });
+
+        // Função para deletar instrumento
+        async function deletarInstrumento(id, event) {
+            event.stopPropagation();
+
+            if (!confirm('Tem certeza que deseja deletar este instrumento?\n\nEsta ação não pode ser desfeita.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/instrumentos/${id}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Erro ao deletar instrumento');
+                }
+
+                // Remove o card da tela com animação
+                const card = document.querySelector(`[data-id="${id}"]`);
+                if (card) {
+                    card.style.transition = 'all 0.3s';
+                    card.style.opacity = '0';
+                    card.style.transform = 'translateX(-20px)';
+
+                    setTimeout(() => {
+                        // Recarrega a lista
+                        carregarInstrumentos();
+                    }, 300);
+                }
+
+            } catch (err) {
+                alert('Erro ao deletar instrumento: ' + err.message);
+            }
+        }
+
+        // Carrega ao iniciar
+        carregarInstrumentos();
+    </script>
+</body>
+
+</html>
