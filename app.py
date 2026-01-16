@@ -2,7 +2,7 @@
 Servidor Flask para interface web do Extrator de Certificados
 """
 
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, session
 from werkzeug.utils import secure_filename
 import os
 import tempfile
@@ -12,9 +12,17 @@ from gerador_sql import GeradorSQL
 import mysql.connector
 import json
 
+# Importa assistente Groq e gerenciador de sessões
+from assistente_groq import inicializar_assistente
+from sessoes import gerenciador_sessoes
+
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max
 app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp()
+app.secret_key = os.urandom(24)  # Para usar sessões Flask
+
+# Inicializa assistente Groq (busca API key do .env ou variável de ambiente)
+assistente_groq = inicializar_assistente()
 
 ALLOWED_EXTENSIONS = {'pdf'}
 
@@ -27,7 +35,7 @@ def allowed_file(filename):
 @app.route('/')
 def index():
     """Página principal - Chat"""
-    return render_template('index_chat.html')
+    return render_template('index_chat_modern.html')
 
 
 @app.route('/upload')
@@ -345,6 +353,8 @@ def responder_cumprimento(comando):
     return False, None
 
 
+
+
 @app.route('/chat-extrair', methods=['POST'])
 def chat_extrair():
     """Processa PDFs com comando personalizado do chat"""
@@ -352,8 +362,74 @@ def chat_extrair():
         # Pega arquivos e comando
         files = request.files.getlist('pdfs')
         comando = request.form.get('comando', 'extrair tudo').lower()
+        
+        print(f"\n🔍 [DEBUG] Comando recebido: '{comando}'")
+        print(f"🔍 [DEBUG] Número de arquivos: {len(files)}")
+        
+        # Conta PDFs válidos
+        num_pdfs = len([f for f in files if f and f.filename != ''])
+        print(f"🔍 [DEBUG] PDFs válidos: {num_pdfs}")
 
-        # Verifica se é um cumprimento
+        # Gerencia sessão do usuário
+        if 'session_id' not in session:
+            session['session_id'] = gerenciador_sessoes.criar_sessao()
+        
+        session_id, sessao_dados = gerenciador_sessoes.obter_sessao(session['session_id'])
+        session['session_id'] = session_id  # Atualiza se foi recriada
+        
+        contexto_usuario = sessao_dados['contexto']
+        historico = gerenciador_sessoes.obter_historico(session_id, limite=5)
+        
+        # Adiciona informação sobre PDFs ao contexto
+        if num_pdfs > 0:
+            contexto_usuario['num_pdfs'] = num_pdfs
+            contexto_usuario['nomes_pdfs'] = [f.filename for f in files if f and f.filename != '']
+
+        # Primeiro tenta usar Groq se disponível
+        print(f"🔍 [DEBUG] Assistente Groq disponível: {assistente_groq and assistente_groq.esta_disponivel()}")
+        if assistente_groq and assistente_groq.esta_disponivel():
+            # Processa comando com LLaMA (com contexto e histórico)
+            resultado_groq = assistente_groq.processar_comando(
+                comando, 
+                contexto_usuario=contexto_usuario,
+                historico=historico
+            )
+            
+            print(f"🔍 [DEBUG] Resultado Groq: tipo={resultado_groq.get('tipo')}, resposta={resultado_groq.get('resposta')[:100]}...")
+            
+            # Salva mensagem do usuário no histórico
+            gerenciador_sessoes.adicionar_mensagem(session_id, 'user', comando)
+            
+            # Se o LLaMA extraiu o nome do usuário, salva no contexto
+            if resultado_groq.get('nome_usuario'):
+                gerenciador_sessoes.atualizar_contexto(session_id, 'nome', resultado_groq['nome_usuario'])
+                print(f"✅ Nome do usuário salvo: {resultado_groq['nome_usuario']}")
+            
+            # Salva resposta do assistente no histórico
+            gerenciador_sessoes.adicionar_mensagem(session_id, 'assistant', resultado_groq['resposta'])
+            
+            # Se for cumprimento, pergunta ou exclusão, responde direto (não precisa de PDFs)
+            if resultado_groq['tipo'] in ['CUMPRIMENTO', 'PERGUNTA_INFO', 'EXCLUSAO']:
+                print(f"✅ [DEBUG] Retornando resposta do Groq (tipo: {resultado_groq['tipo']})")
+                return jsonify({
+                    'success': True,
+                    'is_greeting': True,
+                    'message': resultado_groq['resposta'],
+                    'powered_by': 'Groq LLaMA 3.3'
+                })
+            
+            # Se for EXTRACAO ou FILTRO, verifica se há arquivos
+            if resultado_groq['tipo'] in ['EXTRACAO', 'FILTRO']:
+                if not files or files[0].filename == '':
+                    print(f"⚠️ [DEBUG] Tipo {resultado_groq['tipo']} mas sem arquivos")
+                    return jsonify({
+                        'success': False, 
+                        'message': resultado_groq['resposta']  # LLaMA já pediu para fazer upload
+                    }), 400
+        else:
+            print("⚠️ [DEBUG] Groq não disponível, usando sistema de regras")
+        
+        # Fallback: Verifica se é um cumprimento (sistema de regras)
         is_cumprimento, resposta = responder_cumprimento(comando)
         if is_cumprimento:
             return jsonify({
@@ -362,8 +438,9 @@ def chat_extrair():
                 'message': resposta
             })
 
+        # Se chegou aqui e não tem arquivos, pede upload
         if not files or files[0].filename == '':
-            return jsonify({'success': False, 'message': 'Nenhum arquivo enviado'}), 400
+            return jsonify({'success': False, 'message': 'Por favor, faça upload de PDFs para extrair dados.'}), 400
 
         # Salva arquivos temporariamente
         temp_paths = []
@@ -386,19 +463,34 @@ def chat_extrair():
                 pass
 
         # Filtra campos baseado no comando
-        campos_extrair = parse_comando(comando)
+        # Se Groq identificou campos específicos, usa eles
+        if assistente_groq and assistente_groq.esta_disponivel():
+            resultado_groq = assistente_groq.processar_comando(comando)
+            if resultado_groq.get('campos'):
+                campos_extrair = resultado_groq['campos']
+            else:
+                campos_extrair = parse_comando(comando)
+        else:
+            campos_extrair = parse_comando(comando)
+        
         if campos_extrair and campos_extrair != 'tudo':
             instrumentos = filtrar_campos(instrumentos, campos_extrair)
 
         # Gera preview
         preview = gerar_preview(instrumentos)
 
-        return jsonify({
+        resposta_final = {
             'success': True,
             'message': f'✅ Extraídos {len(instrumentos)} instrumento(s) com sucesso!',
             'instrumentos': instrumentos,
             'preview': preview
-        })
+        }
+        
+        # Adiciona badge se usou Groq
+        if assistente_groq and assistente_groq.esta_disponivel():
+            resposta_final['powered_by'] = 'Groq LLaMA 3.2'
+        
+        return jsonify(resposta_final)
 
     except Exception as e:
         import traceback
@@ -429,9 +521,28 @@ def inserir_banco():
         cursor = conn.cursor()
 
         total_inseridos = 0
+        total_ignorados = 0
         total_grandezas = 0
+        duplicatas = []
 
         for inst in instrumentos:
+            identificacao = inst.get('identificacao')
+            
+            # Verifica se já existe instrumento com mesma identificação para este user_id
+            cursor.execute("""
+                SELECT id FROM instrumentos 
+                WHERE identificacao = %s AND user_id = %s
+                LIMIT 1
+            """, (identificacao, user_id))
+            
+            existe = cursor.fetchone()
+            
+            if existe:
+                # Instrumento já existe, pula para o próximo
+                total_ignorados += 1
+                duplicatas.append(identificacao or 'sem identificação')
+                continue
+            
             # Insere instrumento
             sql_inst = """
                 INSERT INTO instrumentos (
@@ -443,7 +554,7 @@ def inserir_banco():
             """
 
             valores_inst = (
-                inst.get('identificacao'),
+                identificacao,
                 inst.get('nome'),
                 inst.get('fabricante'),
                 inst.get('modelo'),
@@ -499,15 +610,29 @@ def inserir_banco():
         cursor.close()
         conn.close()
 
+        # Monta mensagem de resposta
+        mensagem = f'✅ Inseridos {total_inseridos} instrumento(s) e {total_grandezas} grandeza(s) no banco!'
+        
+        if total_ignorados > 0:
+            mensagem += f'\n⚠️ {total_ignorados} instrumento(s) ignorado(s) (já existente(s) no banco)'
+            if duplicatas:
+                mensagem += f'\n📋 Duplicatas: {", ".join(duplicatas[:5])}'
+                if len(duplicatas) > 5:
+                    mensagem += f' e mais {len(duplicatas) - 5}...'
+
         return jsonify({
             'success': True,
-            'message': f'Inseridos {total_inseridos} instrumento(s) e {total_grandezas} grandeza(s) no banco!'
+            'message': mensagem,
+            'inseridos': total_inseridos,
+            'ignorados': total_ignorados,
+            'duplicatas': duplicatas
         })
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)}), 500
+
 
 
 def parse_comando(comando):

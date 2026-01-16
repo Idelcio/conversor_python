@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metron - Chat Extrator Gocal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Light Mode */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f7f7f8;
+            --bg-tertiary: #ececf1;
+            --text-primary: #0d0d0d;
+            --text-secondary: #676767;
+            --text-tertiary: #8e8ea0;
+            --border-color: #d9d9e3;
+            --accent-primary: #00A8E8;
+            --accent-hover: #0090CC;
+            --user-msg-bg: #f4f4f4;
+            --bot-msg-bg: #ffffff;
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+            --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.12);
+            --sidebar-width: 280px;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #212121;
+            --bg-secondary: #2f2f2f;
+            --bg-tertiary: #3f3f3f;
+            --text-primary: #ececec;
+            --text-secondary: #c5c5d2;
+            --text-tertiary: #8e8ea0;
+            --border-color: #4d4d4f;
+            --accent-primary: #00A8E8;
+            --accent-hover: #00C4FF;
+            --user-msg-bg: #2f2f2f;
+            --bot-msg-bg: #2f2f2f;
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+            --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: var(--shadow-sm);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: var(--shadow-md);
+        }
+
+        .header-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .header-subtitle {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            margin-top: 2px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .theme-toggle {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: none;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s ease;
+        }
+
+        .theme-toggle:hover {
+            background: var(--bg-tertiary);
+            transform: scale(1.05);
+        }
+
+        /* Main Layout */
+        .main-layout {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-primary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .sidebar-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .sidebar-subtitle {
+            font-size: 12px;
+            color: var(--text-tertiary);
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .upload-section {
+            margin-bottom: 20px;
+        }
+
+        .upload-box {
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 24px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: var(--bg-secondary);
+        }
+
+        .upload-box:hover {
+            border-color: var(--accent-primary);
+            background: var(--bg-tertiary);
+            transform: scale(1.02);
+        }
+
+        .upload-box.dragover {
+            border-color: var(--accent-primary);
+            background: var(--accent-primary);
+            opacity: 0.1;
+        }
+
+        .upload-icon {
+            font-size: 32px;
+            margin-bottom: 8px;
+            opacity: 0.7;
+        }
+
+        .upload-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .files-list {
+            margin-top: 16px;
+        }
+
+        .files-list-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .file-item {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s ease;
+            animation: slideInLeft 0.3s ease;
+        }
+
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .file-item:hover {
+            background: var(--bg-tertiary);
+            transform: translateX(4px);
+        }
+
+        .file-icon {
+            font-size: 18px;
+        }
+
+        .file-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .file-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .file-size {
+            font-size: 11px;
+            color: var(--text-tertiary);
+            margin-top: 2px;
+        }
+
+        .file-remove {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: none;
+            background: transparent;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            transition: all 0.2s ease;
+        }
+
+        .file-remove:hover {
+            background: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        /* Chat Container */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 900px;
+            width: 100%;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 32px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* Messages */
+        .message {
+            display: flex;
+            gap: 16px;
+            animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            opacity: 0;
+            animation-fill-mode: forwards;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            flex-direction: row-reverse;
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .message.bot .avatar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .message.user .avatar {
+            background: var(--accent-primary);
+        }
+
+        .message-content {
+            max-width: 75%;
+            background: var(--bot-msg-bg);
+            border-radius: 18px;
+            padding: 16px 20px;
+            line-height: 1.6;
+            color: var(--text-primary);
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        .message.user .message-content {
+            background: var(--user-msg-bg);
+            border: none;
+        }
+
+        .message-content strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        /* Data Display */
+        .data-table {
+            margin: 16px 0;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+        }
+
+        .data-row {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            transition: background 0.2s ease;
+        }
+
+        .data-row:last-child {
+            border-bottom: none;
+        }
+
+        .data-row:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .data-label {
+            padding: 12px 16px;
+            font-weight: 600;
+            width: 180px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        .data-value {
+            padding: 12px 16px;
+            flex: 1;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        .instrument-card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 16px;
+            margin: 12px 0;
+            border-left: 4px solid var(--accent-primary);
+            box-shadow: var(--shadow-sm);
+            transition: all 0.3s ease;
+        }
+
+        .instrument-card:hover {
+            box-shadow: var(--shadow-md);
+            transform: translateX(4px);
+        }
+
+        .instrument-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+            font-size: 15px;
+        }
+
+        .quick-view {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .quick-item {
+            font-size: 13px;
+        }
+
+        .quick-label {
+            color: var(--text-tertiary);
+            font-weight: 500;
+        }
+
+        .quick-value {
+            color: var(--text-primary);
+            margin-left: 6px;
+            font-weight: 500;
+        }
+
+        .tag-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .tag-card {
+            background: linear-gradient(135deg, #00A8E8 0%, #0090CC 100%);
+            color: white;
+            padding: 16px;
+            border-radius: 12px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 14px;
+            box-shadow: var(--shadow-md);
+            transition: all 0.3s ease;
+        }
+
+        .tag-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .summary-badge {
+            display: inline-block;
+            background: var(--accent-primary);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+
+        /* Input Area */
+        .chat-input-area {
+            background: var(--bg-primary);
+            border-top: 1px solid var(--border-color);
+            padding: 20px 24px 24px;
+            box-shadow: var(--shadow-md);
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .chat-input {
+            flex: 1;
+            border: 2px solid var(--border-color);
+            border-radius: 24px;
+            padding: 14px 20px;
+            font-size: 15px;
+            outline: none;
+            transition: all 0.3s ease;
+            font-family: inherit;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            resize: none;
+            max-height: 120px;
+            min-height: 48px;
+        }
+
+        .chat-input:focus {
+            border-color: var(--accent-primary);
+            background: var(--bg-primary);
+            box-shadow: 0 0 0 3px rgba(0, 168, 232, 0.1);
+        }
+
+        .attach-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 2px solid var(--border-color);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .attach-btn:hover {
+            border-color: var(--accent-primary);
+            background: var(--bg-tertiary);
+            transform: scale(1.08);
+        }
+
+        .send-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: none;
+            background: var(--accent-primary);
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow-md);
+            flex-shrink: 0;
+        }
+
+        .send-btn:hover:not(:disabled) {
+            background: var(--accent-hover);
+            transform: scale(1.08);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Drag & Drop no campo de texto */
+        .chat-input.dragover {
+            border-color: var(--accent-primary);
+            background: var(--bg-tertiary);
+            box-shadow: 0 0 0 3px rgba(0, 168, 232, 0.2);
+        }
+
+        /* Action Bar */
+        .action-bar {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+        }
+
+        .action-bar.show {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: all;
+        }
+
+        .action-btn {
+            flex: 1;
+            padding: 12px 18px;
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            background: var(--bg-primary);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            color: var(--text-primary);
+        }
+
+        .action-btn:hover {
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+            background: var(--bg-secondary);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        /* Loading Animation */
+        .loading-dots {
+            display: inline-flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .loading-dots span {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-primary);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+
+        .loading-dots span:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+
+        .loading-dots span:nth-child(2) {
+            animation-delay: -0.16s;
+        }
+
+        @keyframes bounce {
+
+            0%,
+            80%,
+            100% {
+                transform: scale(0.7);
+                opacity: 0.5;
+            }
+
+            40% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-tertiary);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                left: -280px;
+                top: 61px;
+                height: calc(100vh - 61px);
+                z-index: 50;
+                box-shadow: var(--shadow-lg);
+            }
+
+            .sidebar.open {
+                left: 0;
+            }
+
+            .chat-messages {
+                padding: 20px 16px;
+            }
+
+            .message-content {
+                max-width: 85%;
+            }
+
+            .action-bar {
+                flex-direction: column;
+            }
+
+            .data-label {
+                width: 140px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+
+<body data-theme="light">
+    <div class="header">
+        <div class="header-left">
+            <div class="logo">🤖</div>
+            <div>
+                <div class="header-title">Metron - Assistente de Extração</div>
+                <div class="header-subtitle">Powered by Gocal</div>
+            </div>
+        </div>
+        <div class="header-right">
+            <button class="theme-toggle" id="themeToggle" title="Alternar tema">
+                🌙
+            </button>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">📁 Arquivos PDF</div>
+                <div class="sidebar-subtitle">Arraste ou clique para adicionar</div>
+            </div>
+            <div class="sidebar-content">
+                <div class="upload-section">
+                    <div class="upload-box" id="uploadBox">
+                        <input type="file" id="fileInput" multiple accept=".pdf" style="display: none;">
+                        <div class="upload-icon">📄</div>
+                        <div class="upload-text">Arraste seus PDFs aqui</div>
+                    </div>
+                </div>
+                <div class="files-list" id="filesList" style="display: none;">
+                    <div class="files-list-title">Arquivos Carregados</div>
+                    <div id="filesContainer"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Area -->
+        <div class="chat-container">
+            <div class="chat-messages" id="chatMessages">
+                <div class="message bot">
+                    <div class="avatar">🤖</div>
+                    <div class="message-content">
+                        <strong>Olá! Sou o Metron, seu assistente de extração de certificados.</strong>
+                        <br><br>
+                        <em style="color: var(--text-tertiary); font-size: 13px;">💡 Metron significa "medida" em grego
+                            - perfeito para análise de certificados de calibração!</em>
+                        <br><br>
+                        Faça upload dos PDFs na lateral esquerda e me diga o que você precisa:
+                        <br><br>
+                        📌 <strong>Exemplos de comandos:</strong><br>
+                        • "extrair tudo"<br>
+                        • "mostrar apenas as tags"<br>
+                        • "mostrar identificação e nome"<br>
+                        • "extrair código, fabricante e modelo"<br>
+                        • "listar todos os números de série"
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <div class="input-wrapper">
+                    <button class="attach-btn" id="attachBtn" title="Anexar PDFs">
+                        📎
+                    </button>
+                    <textarea class="chat-input" id="chatInput" rows="1"
+                        placeholder="Digite sua mensagem ou arraste PDFs aqui... Ex: 'extrair tudo'"
+                        autocomplete="off"></textarea>
+                    <button class="send-btn" id="sendBtn">▲</button>
+                </div>
+
+                <div class="action-bar" id="actionBar">
+                    <button class="action-btn" onclick="insertarNoBanco()">
+                        💾 Inserir no Banco
+                    </button>
+                    <button class="action-btn" onclick="gerarSQL()">
+                        📄 Gerar SQL
+                    </button>
+                    <button class="action-btn" onclick="baixarJSON()">
+                        📦 Baixar JSON
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let uploadedFiles = [];
+        let extractedData = null;
+
+        const uploadBox = document.getElementById('uploadBox');
+        const fileInput = document.getElementById('fileInput');
+        const filesList = document.getElementById('filesList');
+        const filesContainer = document.getElementById('filesContainer');
+        const chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const chatMessages = document.getElementById('chatMessages');
+        const actionBar = document.getElementById('actionBar');
+        const themeToggle = document.getElementById('themeToggle');
+        const attachBtn = document.getElementById('attachBtn');
+
+        // Theme Toggle
+        themeToggle.addEventListener('click', () => {
+            const body = document.body;
+            const currentTheme = body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            body.setAttribute('data-theme', newTheme);
+            themeToggle.textContent = newTheme === 'light' ? '🌙' : '☀️';
+            localStorage.setItem('theme', newTheme);
+        });
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.body.setAttribute('data-theme', savedTheme);
+        themeToggle.textContent = savedTheme === 'light' ? '🌙' : '☀️';
+
+        // Auto-resize textarea
+        chatInput.addEventListener('input', function () {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+
+        // Botão de anexar PDFs
+        attachBtn.addEventListener('click', () => fileInput.click());
+
+        // Drag & Drop no campo de texto
+        chatInput.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            chatInput.classList.add('dragover');
+        });
+
+        chatInput.addEventListener('dragleave', () => {
+            chatInput.classList.remove('dragover');
+        });
+
+        chatInput.addEventListener('drop', (e) => {
+            e.preventDefault();
+            chatInput.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        // Upload handlers (sidebar)
+        uploadBox.addEventListener('click', () => fileInput.click());
+
+
+        uploadBox.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadBox.classList.add('dragover');
+        });
+
+        uploadBox.addEventListener('dragleave', () => {
+            uploadBox.classList.remove('dragover');
+        });
+
+        uploadBox.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadBox.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            uploadedFiles = Array.from(files);
+            renderFilesList();
+            addBotMessage(`✅ ${files.length} arquivo(s) carregado(s)! O que você gostaria de fazer?`);
+        }
+
+        function renderFilesList() {
+            if (uploadedFiles.length === 0) {
+                filesList.style.display = 'none';
+                return;
+            }
+
+            filesList.style.display = 'block';
+            filesContainer.innerHTML = uploadedFiles.map((file, idx) => {
+                const sizeKB = (file.size / 1024).toFixed(1);
+                return `
+                    <div class="file-item">
+                        <div class="file-icon">📄</div>
+                        <div class="file-info">
+                            <div class="file-name" title="${file.name}">${file.name}</div>
+                            <div class="file-size">${sizeKB} KB</div>
+                        </div>
+                        <button class="file-remove" onclick="removeFile(${idx})" title="Remover">×</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function removeFile(idx) {
+            uploadedFiles.splice(idx, 1);
+            renderFilesList();
+            if (uploadedFiles.length === 0) {
+                addBotMessage('Todos os arquivos foram removidos. Faça upload de novos PDFs para continuar.');
+            }
+        }
+
+        // Chat handlers
+        sendBtn.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        async function sendMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            addUserMessage(message);
+            chatInput.value = '';
+            chatInput.style.height = 'auto';
+
+            addLoadingMessage();
+
+            try {
+                const formData = new FormData();
+                uploadedFiles.forEach(file => {
+                    formData.append('pdfs', file);
+                });
+                formData.append('comando', message);
+
+                const response = await fetch('/chat-extrair', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                removeLastMessage();
+
+                if (data.success) {
+                    if (data.is_greeting) {
+                        addBotMessage(data.message);
+                    } else {
+                        extractedData = data.instrumentos;
+                        const visualization = gerarVisualizacao(data.instrumentos, message);
+                        addBotMessage(visualization);
+                        actionBar.classList.add('show');
+                    }
+                } else {
+                    addBotMessage(`❌ ${data.message}`);
+                }
+            } catch (error) {
+                removeLastMessage();
+                addBotMessage(`❌ Erro: ${error.message}`);
+            }
+        }
+
+        function gerarVisualizacao(instrumentos, comando) {
+            comando = comando.toLowerCase();
+
+            const wantsTags = comando.includes('tag') || comando.includes('identificação') || comando.includes('identificacao') || comando.includes('código') || comando.includes('codigo');
+            const wantsOnlyTags = (wantsTags && comando.includes('apenas')) || (wantsTags && comando.includes('só')) || (wantsTags && comando.includes('somente'));
+
+            let html = `<strong>✅ Processado com sucesso!</strong><br>`;
+            html += `<span class="summary-badge">${instrumentos.length} instrumento(s)</span><br><br>`;
+
+            if (wantsOnlyTags) {
+                html += '<div class="tag-grid">';
+                instrumentos.forEach(inst => {
+                    const tag = inst.identificacao || 'n/i';
+                    html += `<div class="tag-card">${tag}</div>`;
+                });
+                html += '</div>';
+            } else if (comando.includes('lista') || comando.includes('listar')) {
+                instrumentos.forEach((inst, idx) => {
+                    const nomeArquivo = inst.arquivo_origem ? inst.arquivo_origem.split(/[\\\/]/).pop().replace('.pdf', '') : `Instrumento ${idx + 1}`;
+                    const temData = inst.data_calibracao && inst.data_calibracao !== 'n/i';
+                    const alertaData = temData ? '' : ' ⚠️';
+
+                    html += `<div class="instrument-card">`;
+                    html += `<div class="instrument-title">📄 ${nomeArquivo}${alertaData}</div>`;
+                    html += `<div class="quick-view">`;
+
+                    if (inst.identificacao && inst.identificacao !== 'n/i') {
+                        html += `<div class="quick-item"><span class="quick-label">TAG:</span><span class="quick-value">${inst.identificacao}</span></div>`;
+                    }
+                    if (inst.nome && inst.nome !== 'n/i') {
+                        html += `<div class="quick-item"><span class="quick-label">Nome:</span><span class="quick-value">${inst.nome}</span></div>`;
+                    }
+                    if (inst.fabricante && inst.fabricante !== 'n/i') {
+                        html += `<div class="quick-item"><span class="quick-label">Fabricante:</span><span class="quick-value">${inst.fabricante}</span></div>`;
+                    }
+                    if (inst.modelo && inst.modelo !== 'n/i') {
+                        html += `<div class="quick-item"><span class="quick-label">Modelo:</span><span class="quick-value">${inst.modelo}</span></div>`;
+                    }
+                    if (inst.data_calibracao && inst.data_calibracao !== 'n/i') {
+                        html += `<div class="quick-item"><span class="quick-label">Data Calib.:</span><span class="quick-value">${inst.data_calibracao}</span></div>`;
+                    }
+
+                    html += `</div></div>`;
+                });
+            } else {
+                // Mostra TODOS os instrumentos (removido o limite de 5)
+                instrumentos.forEach((inst, idx) => {
+                    const nomeArquivo = inst.arquivo_origem ? inst.arquivo_origem.split(/[\\\/]/).pop().replace('.pdf', '') : `Instrumento ${idx + 1}`;
+                    const temData = inst.data_calibracao && inst.data_calibracao !== 'n/i';
+                    const alertaData = temData ? '' : ' ⚠️ <span style="color: #ff9800; font-size: 12px;">Sem data</span>';
+
+                    html += `<div class="instrument-card">`;
+                    html += `<div class="instrument-title">📄 ${nomeArquivo}${alertaData}</div>`;
+                    html += '<div class="data-table">';
+
+                    const campos = [
+                        ['Identificação', inst.identificacao],
+                        ['Nome', inst.nome],
+                        ['Fabricante', inst.fabricante],
+                        ['Modelo', inst.modelo],
+                        ['Nº Série', inst.numero_serie],
+                        ['Responsável', inst.responsavel],
+                        ['Departamento', inst.departamento],
+                        ['Data Calibração', inst.data_calibracao],
+                        ['Data Emissão', inst.data_emissao]
+                    ];
+
+                    campos.forEach(([label, value]) => {
+                        if (value && value !== 'n/i') {
+                            html += `
+                                <div class="data-row">
+                                    <div class="data-label">${label}</div>
+                                    <div class="data-value">${value}</div>
+                                </div>
+                            `;
+                        }
+                    });
+
+                    html += '</div></div>';
+                });
+            }
+
+            return html;
+        }
+
+        function addUserMessage(text) {
+            const div = document.createElement('div');
+            div.className = 'message user';
+            div.innerHTML = `
+                <div class="avatar">👤</div>
+                <div class="message-content">${text}</div>
+            `;
+            chatMessages.appendChild(div);
+            scrollToBottom();
+        }
+
+        function addBotMessage(html) {
+            const div = document.createElement('div');
+            div.className = 'message bot';
+            div.innerHTML = `
+                <div class="avatar">🤖</div>
+                <div class="message-content">${html}</div>
+            `;
+            chatMessages.appendChild(div);
+            scrollToBottom();
+        }
+
+        function addLoadingMessage() {
+            const div = document.createElement('div');
+            div.className = 'message bot';
+            div.innerHTML = `
+                <div class="avatar">🤖</div>
+                <div class="message-content">
+                    Processando
+                    <div class="loading-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+            `;
+            chatMessages.appendChild(div);
+            scrollToBottom();
+        }
+
+        function removeLastMessage() {
+            const last = chatMessages.lastElementChild;
+            if (last) last.remove();
+        }
+
+        function scrollToBottom() {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        async function insertarNoBanco() {
+            if (!extractedData) {
+                addBotMessage('⚠️ Nenhum dado extraído!');
+                return;
+            }
+
+            const userId = prompt('Digite o ID do usuário (user_id):');
+            if (!userId) return;
+
+            addLoadingMessage();
+
+            try {
+                const response = await fetch('/inserir-banco', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        instrumentos: extractedData,
+                        user_id: parseInt(userId)
+                    })
+                });
+
+                const data = await response.json();
+                removeLastMessage();
+
+                if (data.success) {
+                    addBotMessage(`✅ ${data.message}`);
+                } else {
+                    addBotMessage(`❌ ${data.message}`);
+                }
+            } catch (error) {
+                removeLastMessage();
+                addBotMessage(`❌ Erro: ${error.message}`);
+            }
+        }
+
+        async function gerarSQL() {
+            if (!extractedData) {
+                addBotMessage('⚠️ Nenhum dado extraído!');
+                return;
+            }
+
+            addLoadingMessage();
+
+            try {
+                const response = await fetch('/gerar-sql', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ instrumentos: extractedData })
+                });
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `instrumentos_${Date.now()}.sql`;
+                a.click();
+
+                removeLastMessage();
+                addBotMessage('✅ SQL gerado e baixado com sucesso!');
+            } catch (error) {
+                removeLastMessage();
+                addBotMessage(`❌ Erro: ${error.message}`);
+            }
+        }
+
+        async function baixarJSON() {
+            if (!extractedData) {
+                addBotMessage('⚠️ Nenhum dado extraído!');
+                return;
+            }
+
+            const dataStr = JSON.stringify(extractedData, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `instrumentos_${Date.now()}.json`;
+            a.click();
+
+            addBotMessage('✅ JSON baixado com sucesso!');
+        }
+    </script>
+</body>
+
+</html>

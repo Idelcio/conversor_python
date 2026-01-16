@@ -14,7 +14,11 @@ def main():
     print("="*60)
 
     # Busca todos os PDFs na pasta atual
-    pdfs = list(Path('.').glob('*.pdf'))
+    # Busca todos os PDFs na pasta atual e na pasta pdfs
+    pdfs_root = list(Path('.').glob('*.pdf'))
+    pdfs_dir = list(Path('pdfs').glob('*.pdf')) if Path('pdfs').exists() else []
+    
+    pdfs = pdfs_root + pdfs_dir
 
     if not pdfs:
         print("\n[ERRO] Nenhum PDF encontrado na pasta atual")

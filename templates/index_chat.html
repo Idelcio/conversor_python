@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -75,6 +76,7 @@
                 opacity: 0;
                 transform: translateY(8px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -109,7 +111,7 @@
             background: white;
             border-radius: 12px;
             padding: 16px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
             line-height: 1.6;
             color: #2d2d2d;
         }
@@ -365,10 +367,14 @@
         }
 
         @keyframes bounce {
-            0%, 80%, 100% {
+
+            0%,
+            80%,
+            100% {
                 transform: scale(0.7);
                 opacity: 0.5;
             }
+
             40% {
                 transform: scale(1);
                 opacity: 1;
@@ -421,6 +427,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="header">
         <div class="header-left">
@@ -463,13 +470,8 @@
         </div>
 
         <div class="input-wrapper">
-            <input
-                type="text"
-                class="chat-input"
-                id="chatInput"
-                placeholder="Digite sua mensagem... Ex: 'extrair tudo' ou 'mostrar apenas tags'"
-                autocomplete="off"
-            >
+            <input type="text" class="chat-input" id="chatInput"
+                placeholder="Digite sua mensagem... Ex: 'extrair tudo' ou 'mostrar apenas tags'" autocomplete="off">
             <button class="send-btn" id="sendBtn">▲</button>
         </div>
 
@@ -552,14 +554,6 @@
 
             addUserMessage(message);
             chatInput.value = '';
-
-            // Verifica se é cumprimento (não precisa de arquivos)
-            const isCumprimento = /^(oi|olá|ola|hey|ei|hello|hi|bom dia|boa tarde|boa noite|obrigad[oa]|valeu|thanks|tchau|até logo|até mais|bye|adeus)$/i.test(message.trim());
-
-            if (uploadedFiles.length === 0 && !isCumprimento) {
-                addBotMessage('⚠️ Por favor, faça upload de PDFs primeiro!');
-                return;
-            }
 
             addLoadingMessage();
 
@@ -824,4 +818,5 @@
         }
     </script>
 </body>
+
 </html>

@@ -11,7 +11,8 @@
       "Bash(python inserir_banco.py:*)",
       "Bash(python criar_tabelas.py:*)",
       "Bash(dir:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(timeout:*)"
     ]
   }
 }
