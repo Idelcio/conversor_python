@@ -15,6 +15,9 @@ import json
 # Importa assistente Groq e gerenciador de sessões
 from assistente_groq import inicializar_assistente
 from sessoes import gerenciador_sessoes
+from parser_edicao import extrair_comando_edicao
+from formatar_nova import formatar_confirmacao_edicao_nova as formatar_confirmacao_edicao
+from gerar_preview_novo import gerar_preview
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max
@@ -385,7 +388,68 @@ def chat_extrair():
             contexto_usuario['num_pdfs'] = num_pdfs
             contexto_usuario['nomes_pdfs'] = [f.filename for f in files if f and f.filename != '']
 
-        # Primeiro tenta usar Groq se disponível
+        # Normaliza comando para verificações
+        comando_lower = comando.lower().strip()
+
+        # FALLBACK: Parser regex de edição (só se Groq não estiver disponível)
+        info_edicao = extrair_comando_edicao(comando)
+        if info_edicao['tipo'] == 'EDICAO' and not (assistente_groq and assistente_groq.esta_disponivel()):
+            print(f"🔧 [DEBUG] Comando de edição detectado: {info_edicao}")
+            
+            # Tenta editar o campo
+            resultado = gerenciador_sessoes.editar_campo_instrumento(
+                session_id,
+                info_edicao['identificador'],
+                info_edicao['campo'],
+                info_edicao['valor_novo']
+            )
+            
+            # Formata resposta
+            mensagem_html = formatar_confirmacao_edicao(resultado)
+            
+            # Salva no histórico
+            gerenciador_sessoes.adicionar_mensagem(session_id, 'user', comando)
+            gerenciador_sessoes.adicionar_mensagem(session_id, 'assistant', mensagem_html)
+            
+            return jsonify({
+                'success': resultado['sucesso'],
+                'is_greeting': True,  # Para não processar como extração
+                'message': mensagem_html,
+                'powered_by': 'Metron Editor'
+            })
+        
+        # PRIORIDADE 1.5: Verifica se é comando para mostrar dados da sessão
+        if any(palavra in comando_lower for palavra in ['mostra os dados', 'mostar os dados', 'mostra dados', 'mostar dados', 'ver dados', 'listar dados', 'mostrar instrumentos', 'exibir dados', 'mostrar os dados']):
+            print(f"📊 [DEBUG] Comando 'mostrar dados' detectado!")
+            instrumentos_sessao = gerenciador_sessoes.obter_instrumentos(session_id)
+            print(f"📊 [DEBUG] Instrumentos na sessão: {len(instrumentos_sessao) if instrumentos_sessao else 0}")
+            if instrumentos_sessao:
+                print(f"📊 [DEBUG] Identificação: {instrumentos_sessao[0].get('identificacao', 'N/A')}")
+                print(f"📊 [DEBUG] Modelo: {instrumentos_sessao[0].get('modelo', 'N/A')}")
+            
+            
+            if instrumentos_sessao:
+                # Retorna os dados da sessão como MENSAGEM formatada (não confia no frontend)
+                preview_html = gerar_preview(instrumentos_sessao)
+                return jsonify({
+                    'success': True,
+                    'is_greeting': True,  # Força exibição como mensagem
+                    'message': preview_html,
+                    'powered_by': 'Dados da Sessão (com edições)'
+                })
+            else:
+                # Se não tem instrumentos na sessão mas tem PDFs, processa automaticamente
+                if files and files[0].filename != '':
+                    print(f"📊 [DEBUG] Não há instrumentos na sessão, mas há {num_pdfs} PDF(s). Processando automaticamente...")
+                    # Continua o fluxo normal de processamento (não retorna aqui)
+                else:
+                    return jsonify({
+                        'success': False,
+                        'is_greeting': True,
+                        'message': '⚠️ Nenhum instrumento na sessão. Faça upload dos PDFs primeiro.'
+                    }), 400
+
+        # PRIORIDADE 2: Tenta usar Groq se disponível
         print(f"🔍 [DEBUG] Assistente Groq disponível: {assistente_groq and assistente_groq.esta_disponivel()}")
         if assistente_groq and assistente_groq.esta_disponivel():
             # Processa comando com LLaMA (com contexto e histórico)
@@ -407,6 +471,87 @@ def chat_extrair():
             
             # Salva resposta do assistente no histórico
             gerenciador_sessoes.adicionar_mensagem(session_id, 'assistant', resultado_groq['resposta'])
+            
+            # NOVO: Se o Groq identificou como EDICAO, processa a edição
+            if resultado_groq['tipo'] == 'EDICAO':
+                # Verifica se há instrumentos na sessão ANTES de tentar editar
+                instrumentos_sessao = gerenciador_sessoes.obter_instrumentos(session_id)
+                if not instrumentos_sessao:
+                    return jsonify({
+                        'success': False,
+                        'is_greeting': True,
+                        'message': '⚠️ Nenhum instrumento na sessão. Faça upload dos PDFs primeiro.',
+                        'powered_by': 'Metron Editor'
+                    }), 400
+                
+                # Verifica se é edição múltipla (arrays) ou única
+                campos_editar = resultado_groq.get('campos_editar')
+                valores_novos = resultado_groq.get('valores_novos')
+                
+                if campos_editar and valores_novos and len(campos_editar) > 0:
+                    # EDIÇÃO MÚLTIPLA
+                    print(f"🔧 [DEBUG] Groq identificou EDIÇÃO MÚLTIPLA: campos={campos_editar}, valores={valores_novos}")
+                    
+                    resultados = []
+                    todas_sucesso = True
+                    
+                    for campo, valor in zip(campos_editar, valores_novos):
+                        resultado = gerenciador_sessoes.editar_campo_instrumento(
+                            session_id,
+                            resultado_groq.get('identificador'),
+                            campo,
+                            valor
+                        )
+                        resultados.append(resultado)
+                        if not resultado['sucesso']:
+                            todas_sucesso = False
+                    
+                    # Formata mensagem consolidada
+                    if todas_sucesso:
+                        edicoes_texto = []
+                        for r in resultados:
+                            edicoes_texto.append(f"✅ **{r['campo']}**: `{r['valor_antigo']}` → `{r['valor_novo']}`")
+                        
+                        mensagem_html = f"""
+                        <div style="padding: 10px; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 4px;">
+                            <h4 style="margin: 0 0 10px 0; color: #2e7d32;">✅ Campos editados com sucesso!</h4>
+                            {'<br>'.join(edicoes_texto)}
+                        </div>
+                        """
+                    else:
+                        mensagem_html = f"""
+                        <div style="padding: 10px; background: #ffebee; border-left: 4px solid #f44336; border-radius: 4px;">
+                            <h4 style="margin: 0 0 10px 0; color: #c62828;">⚠️ Algumas edições falharam</h4>
+                            {resultados[0].get('mensagem', 'Erro desconhecido')}
+                        </div>
+                        """
+                    
+                    return jsonify({
+                        'success': todas_sucesso,
+                        'is_greeting': True,
+                        'message': mensagem_html,
+                        'powered_by': 'Groq LLaMA 3.3 + Metron Editor'
+                    })
+                else:
+                    # EDIÇÃO ÚNICA
+                    print(f"🔧 [DEBUG] Groq identificou EDICAO ÚNICA: campo={resultado_groq.get('campo')}, valor={resultado_groq.get('valor_novo')}")
+                    
+                    resultado = gerenciador_sessoes.editar_campo_instrumento(
+                        session_id,
+                        resultado_groq.get('identificador'),  # Pode ser None
+                        resultado_groq.get('campo'),
+                        resultado_groq.get('valor_novo')
+                    )
+                    
+                    # Formata resposta
+                    mensagem_html = formatar_confirmacao_edicao(resultado)
+                    
+                    return jsonify({
+                        'success': resultado['sucesso'],
+                        'is_greeting': True,
+                        'message': mensagem_html,
+                        'powered_by': 'Groq LLaMA 3.3 + Metron Editor'
+                    })
             
             # Se for cumprimento, pergunta ou exclusão, responde direto (não precisa de PDFs)
             if resultado_groq['tipo'] in ['CUMPRIMENTO', 'PERGUNTA_INFO', 'EXCLUSAO']:
@@ -438,20 +583,73 @@ def chat_extrair():
                 'message': resposta
             })
 
+        # IMPORTANTE: Se não tem arquivos MAS é comando de visualização, mostra dados da sessão
+        comandos_visualizacao = ['mostrar tudo', 'extrair tudo', 'ver tudo', 'listar tudo', 'mostra tudo', 'exibir tudo']
+        if (not files or files[0].filename == '') and any(cmd in comando_lower for cmd in comandos_visualizacao):
+            instrumentos_sessao = gerenciador_sessoes.obter_instrumentos(session_id)
+            if instrumentos_sessao:
+                print(f"📊 [DEBUG] Mostrando dados da sessão (sem reprocessar PDF)")
+                preview_html = gerar_preview(instrumentos_sessao)
+                return jsonify({
+                    'success': True,
+                    'is_greeting': True,
+                    'message': preview_html,
+                    'powered_by': 'Dados da Sessão (com edições)'
+                })
+            else:
+                return jsonify({'success': False, 'message': 'Por favor, faça upload de PDFs para extrair dados.'}), 400
+        
         # Se chegou aqui e não tem arquivos, pede upload
         if not files or files[0].filename == '':
             return jsonify({'success': False, 'message': 'Por favor, faça upload de PDFs para extrair dados.'}), 400
 
         # Salva arquivos temporariamente
         temp_paths = []
+        uploaded_filenames = []
         for file in files:
             if file and allowed_file(file.filename):
                 filename = secure_filename(file.filename)
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file.save(filepath)
                 temp_paths.append(filepath)
+                uploaded_filenames.append(filename)
 
-        # Processa PDFs
+        # IMPORTANTE: Verifica se são arquivos NOVOS ou os mesmos da sessão
+        instrumentos_existentes = gerenciador_sessoes.obter_instrumentos(session_id)
+        comandos_visualizacao = ['mostrar tudo', 'extrair tudo', 'ver tudo', 'listar tudo', 'mostra tudo', 
+                                'exibir tudo', 'mostrar os dados', 'mostra os dados']
+        
+        # Verifica se os arquivos são os mesmos da sessão
+        arquivos_sao_os_mesmos = False
+        if instrumentos_existentes:
+            arquivos_sessao = [inst.get('arquivo_origem', '').split('/')[-1].split('\\')[-1] 
+                             for inst in instrumentos_existentes]
+            arquivos_sao_os_mesmos = set(uploaded_filenames) == set(arquivos_sessao)
+        
+        # Só reutiliza dados da sessão se:
+        # 1. Já existem instrumentos
+        # 2. É comando de visualização
+        # 3. Os arquivos são OS MESMOS (não é novo upload)
+        if instrumentos_existentes and any(cmd in comando_lower for cmd in comandos_visualizacao) and arquivos_sao_os_mesmos:
+            print(f"📊 [DEBUG] Mesmos arquivos da sessão - mostrando dados editados ao invés de reprocessar")
+            # Limpa arquivos temporários
+            for path in temp_paths:
+                try:
+                    os.remove(path)
+                except:
+                    pass
+            
+            # Mostra os dados da sessão (com edições)
+            preview_html = gerar_preview(instrumentos_existentes)
+            return jsonify({
+                'success': True,
+                'is_greeting': True,
+                'message': preview_html,
+                'powered_by': 'Dados da Sessão (com edições)'
+            })
+
+        # Se chegou aqui, são NOVOS arquivos ou comando diferente - processa normalmente
+        print(f"📊 [DEBUG] Novos arquivos detectados - processando PDFs")
         extrator = ExtratorCertificado()
         instrumentos = extrator.processar_multiplos_pdfs(temp_paths)
 
@@ -476,19 +674,35 @@ def chat_extrair():
         if campos_extrair and campos_extrair != 'tudo':
             instrumentos = filtrar_campos(instrumentos, campos_extrair)
 
+        # NOVO: Salva instrumentos na sessão (antes de ir pro banco)
+        gerenciador_sessoes.salvar_instrumentos(session_id, instrumentos)
+        print(f"💾 [DEBUG] {len(instrumentos)} instrumento(s) salvos na sessão {session_id}")
+
         # Gera preview
         preview = gerar_preview(instrumentos)
 
-        resposta_final = {
-            'success': True,
-            'message': f'✅ Extraídos {len(instrumentos)} instrumento(s) com sucesso!',
-            'instrumentos': instrumentos,
-            'preview': preview
-        }
+        # Se era um comando de "mostrar dados", retorna formatação completa HTML
+        if any(palavra in comando_lower for palavra in ['mostra os dados', 'mostar os dados', 'mostra dados', 'mostar dados', 'ver dados', 'listar dados', 'mostrar instrumentos', 'exibir dados', 'mostrar os dados', 'mostrar tudo', 'extrair tudo', 'ver tudo', 'listar tudo']):
+             preview_html = preview.replace('\n', '<br>')
+             resposta_final = {
+                'success': True,
+                'is_greeting': True, # Força exibição como mensagem de texto
+                'message': f'<div style="font-family: monospace; white-space: pre-wrap;">{preview_html}</div>',
+                'powered_by': 'Metron Auto-Process'
+            }
+        else:
+            # Resposta padrão para extração normal
+            resposta_final = {
+                'success': True,
+                'message': f'✅ Extraídos {len(instrumentos)} instrumento(s) com sucesso!\n\n💡 Você pode editar qualquer campo antes de inserir no banco. Exemplo:\n"muda o numero de serie do arquivo x34 para 123"',
+                'instrumentos': instrumentos,
+                'preview': preview
+            }
         
         # Adiciona badge se usou Groq
         if assistente_groq and assistente_groq.esta_disponivel():
-            resposta_final['powered_by'] = 'Groq LLaMA 3.2'
+            if 'powered_by' not in resposta_final:
+                resposta_final['powered_by'] = 'Groq LLaMA 3.2'
         
         return jsonify(resposta_final)
 
@@ -503,8 +717,25 @@ def inserir_banco():
     """Insere instrumentos extraídos diretamente no banco"""
     try:
         data = request.get_json()
-        instrumentos = data.get('instrumentos', [])
         user_id = int(data.get('user_id', 1))
+        
+        # Obtém session_id
+        if 'session_id' not in session:
+            return jsonify({
+                'success': False, 
+                'message': 'Sessão não encontrada. Faça upload dos PDFs novamente.'
+            }), 400
+        
+        session_id = session['session_id']
+        
+        # Tenta obter instrumentos da sessão primeiro (podem ter sido editados)
+        instrumentos = gerenciador_sessoes.obter_instrumentos(session_id)
+        
+        # Se não tem na sessão, tenta pegar do request (fallback para compatibilidade)
+        if not instrumentos:
+            instrumentos = data.get('instrumentos', [])
+        
+        print(f"📥 [DEBUG] Inserindo {len(instrumentos)} instrumento(s) no banco (user_id={user_id})")
 
         if not instrumentos:
             return jsonify({'success': False, 'message': 'Nenhum instrumento para inserir'}), 400
@@ -619,6 +850,10 @@ def inserir_banco():
                 mensagem += f'\n📋 Duplicatas: {", ".join(duplicatas[:5])}'
                 if len(duplicatas) > 5:
                     mensagem += f' e mais {len(duplicatas) - 5}...'
+        
+        # Limpa instrumentos da sessão após inserção bem-sucedida
+        gerenciador_sessoes.limpar_instrumentos(session_id)
+        print(f"🧹 [DEBUG] Instrumentos limpos da sessão {session_id}")
 
         return jsonify({
             'success': True,
@@ -631,6 +866,32 @@ def inserir_banco():
     except Exception as e:
         import traceback
         traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/instrumentos-pendentes', methods=['GET'])
+def instrumentos_pendentes():
+    """Retorna instrumentos pendentes na sessão (que ainda não foram inseridos no banco)"""
+    try:
+        # Obtém session_id
+        if 'session_id' not in session:
+            return jsonify({
+                'success': True,
+                'instrumentos': [],
+                'total': 0,
+                'message': 'Nenhuma sessão ativa'
+            })
+        
+        session_id = session['session_id']
+        instrumentos = gerenciador_sessoes.obter_instrumentos(session_id)
+        
+        return jsonify({
+            'success': True,
+            'instrumentos': instrumentos,
+            'total': len(instrumentos)
+        })
+    
+    except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
@@ -681,21 +942,68 @@ def filtrar_campos(instrumentos, campos):
 
 
 def gerar_preview(instrumentos):
-    """Gera um preview dos dados extraídos"""
+    """Gera um preview COMPLETO dos dados extraídos"""
     if not instrumentos:
         return "Nenhum instrumento encontrado"
 
     preview_lines = []
-    for idx, inst in enumerate(instrumentos[:3], 1):  # Mostra apenas os 3 primeiros
-        preview_lines.append(f"Instrumento {idx}:")
-        preview_lines.append(f"  • Identificação: {inst.get('identificacao', 'n/i')}")
+    for idx, inst in enumerate(instrumentos, 1):  # Mostra TODOS os instrumentos
+        preview_lines.append(f"\n{'='*60}")
+        preview_lines.append(f"📄 INSTRUMENTO {idx}: {inst.get('arquivo_origem', 'n/i')}")
+        preview_lines.append(f"{'='*60}")
+        
+        # DADOS PRINCIPAIS
+        preview_lines.append(f"\n🔖 IDENTIFICAÇÃO E DADOS BÁSICOS:")
+        preview_lines.append(f"  • Identificação/Tag: {inst.get('identificacao', 'n/i')}")
         preview_lines.append(f"  • Nome: {inst.get('nome', 'n/i')}")
+        preview_lines.append(f"  • Descrição: {inst.get('descricao', 'n/i')}")
+        preview_lines.append(f"  • Tipo/Família: {inst.get('tipo_familia', 'n/i')}")
+        
+        # FABRICANTE E MODELO
+        preview_lines.append(f"\n🏭 FABRICANTE E MODELO:")
         preview_lines.append(f"  • Fabricante: {inst.get('fabricante', 'n/i')}")
         preview_lines.append(f"  • Modelo: {inst.get('modelo', 'n/i')}")
-        preview_lines.append("")
-
-    if len(instrumentos) > 3:
-        preview_lines.append(f"... e mais {len(instrumentos) - 3} instrumento(s)")
+        preview_lines.append(f"  • Número de Série: {inst.get('numero_serie', 'n/i')}")
+        
+        # RESPONSÁVEL E LOCALIZAÇÃO
+        preview_lines.append(f"\n👤 RESPONSÁVEL E LOCALIZAÇÃO:")
+        preview_lines.append(f"  • Responsável/Cliente: {inst.get('responsavel', 'n/i')}")
+        preview_lines.append(f"  • Departamento/Local: {inst.get('departamento', 'n/i')}")
+        
+        # DATAS E PERIODICIDADE
+        preview_lines.append(f"\n📅 DATAS E PERIODICIDADE:")
+        preview_lines.append(f"  • Data de Calibração: {inst.get('data_calibracao', 'n/i')}")
+        preview_lines.append(f"  • Data de Emissão: {inst.get('data_emissao', 'n/i')}")
+        preview_lines.append(f"  • Periodicidade: {inst.get('periodicidade', 'n/i')} meses")
+        
+        # STATUS E CONTROLE
+        preview_lines.append(f"\n⚙️ STATUS E CONTROLE:")
+        preview_lines.append(f"  • Status: {inst.get('status', 'n/i')}")
+        preview_lines.append(f"  • Quantidade: {inst.get('quantidade', 'n/i')}")
+        preview_lines.append(f"  • Motivo Calibração: {inst.get('motivo_calibracao', 'n/i')}")
+        preview_lines.append(f"  • Criticidade: {inst.get('criticidade', 'n/i')}")
+        preview_lines.append(f"  • Série Desenv.: {inst.get('serie_desenv', 'n/i')}")
+        
+        # GRANDEZAS
+        grandezas = inst.get('grandezas', [])
+        if grandezas:
+            preview_lines.append(f"\n📊 GRANDEZAS ({len(grandezas)}):")
+            for g_idx, grandeza in enumerate(grandezas, 1):
+                preview_lines.append(f"\n  Grandeza {g_idx}:")
+                preview_lines.append(f"    • Unidade: {grandeza.get('unidade', 'n/i')}")
+                preview_lines.append(f"    • Faixa Nominal: {grandeza.get('faixa_nominal', 'n/i')}")
+                preview_lines.append(f"    • Faixa de Uso: {grandeza.get('faixa_uso', 'n/i')}")
+                preview_lines.append(f"    • Tolerância Processo: {grandeza.get('tolerancia_processo', 'n/i')}")
+                preview_lines.append(f"    • Tolerância Simétrica: {grandeza.get('tolerancia_simetrica', 'n/i')}")
+                preview_lines.append(f"    • Resolução: {grandeza.get('resolucao', 'n/i')}")
+                preview_lines.append(f"    • Critério Aceitação: {grandeza.get('criterio_aceitacao', 'n/i')}")
+                preview_lines.append(f"    • Classe/Norma: {grandeza.get('classe_norma', 'n/i')}")
+                preview_lines.append(f"    • Classificação: {grandeza.get('classificacao', 'n/i')}")
+                preview_lines.append(f"    • Regra Decisão ID: {grandeza.get('regra_decisao_id', 'n/i')}")
+                
+                servicos = grandeza.get('servicos', [])
+                if servicos:
+                    preview_lines.append(f"    • Serviços/Pontos ({len(servicos)}): {', '.join(map(str, servicos[:3]))}{' ...' if len(servicos) > 3 else ''}")
 
     return "\n".join(preview_lines)
 

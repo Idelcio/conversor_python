@@ -1,6 +1,7 @@
 """
 Extrator de Informações de Certificados de Calibração
 Extrai dados de PDFs e gera JSON estruturado para importação no sistema Gocal
+Suporta PDFs com texto nativo e PDFs escaneados (via OCR)
 """
 
 import pdfplumber
@@ -9,13 +10,22 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
+import io
 
-# Tenta importar PyMuPDF como fallback
+# Tenta importar PyMuPDF
 try:
     import fitz  # PyMuPDF
     HAS_PYMUPDF = True
 except ImportError:
     HAS_PYMUPDF = False
+
+# Tenta importar bibliotecas de OCR
+try:
+    from PIL import Image
+    import pytesseract
+    HAS_OCR = True
+except ImportError:
+    HAS_OCR = False
 
 
 class ExtratorCertificado:
@@ -25,42 +35,92 @@ class ExtratorCertificado:
         self.instrumentos = {}
 
     def extrair_texto_pdf(self, caminho_pdf: str) -> str:
-        """Extrai todo o texto do PDF usando pdfplumber e PyMuPDF como fallback"""
+        """
+        Extrai todo o texto do PDF usando múltiplas estratégias:
+        1. pdfplumber (texto nativo - preferido)
+        2. PyMuPDF (fallback para texto nativo)
+        3. OCR com pytesseract (para PDFs escaneados)
+        """
+        # Tenta extrair texto nativo primeiro
         texto_pdfplumber = self._extrair_com_pdfplumber(caminho_pdf)
 
-        # Verifica se o texto parece corrompido (muitos caracteres duplicados de data)
+        # Verifica se o texto parece corrompido
         if self._texto_parece_corrompido(texto_pdfplumber) and HAS_PYMUPDF:
             texto_pymupdf = self._extrair_com_pymupdf(caminho_pdf)
-            # Combina os dois textos para ter mais dados
-            return texto_pdfplumber + "\n" + texto_pymupdf
+            texto_completo = texto_pdfplumber + "\n" + texto_pymupdf
+        else:
+            texto_completo = texto_pdfplumber
 
-        return texto_pdfplumber
+        # Se o texto for muito curto (< 400 caracteres), provavelmente é PDF escaneado
+        # Tenta OCR como fallback
+        if len(texto_completo.strip()) < 400 and HAS_OCR and HAS_PYMUPDF:
+            print(f"  [INFO] Texto nativo insuficiente ({len(texto_completo)} chars), tentando OCR...")
+            texto_ocr = self._extrair_com_ocr(caminho_pdf)
+            if len(texto_ocr.strip()) > len(texto_completo.strip()):
+                print(f"  [OK] OCR extraiu {len(texto_ocr)} caracteres")
+                texto_completo = texto_ocr
+            else:
+                texto_completo = texto_completo + "\n" + texto_ocr
+
+        return texto_completo
 
     def _extrair_com_pdfplumber(self, caminho_pdf: str) -> str:
-        """Extrai texto usando pdfplumber"""
+        """Extrai texto nativo usando pdfplumber"""
         texto_completo = []
         try:
             with pdfplumber.open(caminho_pdf) as pdf:
-                for pagina in pdf.pages:
+                for i, pagina in enumerate(pdf.pages, start=1):
                     texto = pagina.extract_text()
                     if texto:
-                        texto_completo.append(texto)
+                        texto_completo.append(f"\n--- PÁGINA {i} ---\n{texto}")
         except Exception as e:
-            print(f"[ERRO] pdfplumber falhou em {caminho_pdf}: {e}")
+            print(f"  [ERRO] pdfplumber falhou: {e}")
         return "\n".join(texto_completo)
 
     def _extrair_com_pymupdf(self, caminho_pdf: str) -> str:
-        """Extrai texto usando PyMuPDF (fallback)"""
+        """Extrai texto nativo usando PyMuPDF (fallback)"""
         texto_completo = []
         try:
             doc = fitz.open(caminho_pdf)
-            for page in doc:
+            for i, page in enumerate(doc, start=1):
                 texto = page.get_text()
                 if texto:
-                    texto_completo.append(texto)
+                    texto_completo.append(f"\n--- PÁGINA {i} (PyMuPDF) ---\n{texto}")
             doc.close()
         except Exception as e:
-            print(f"[ERRO] PyMuPDF falhou em {caminho_pdf}: {e}")
+            print(f"  [ERRO] PyMuPDF falhou: {e}")
+        return "\n".join(texto_completo)
+
+    def _extrair_com_ocr(self, caminho_pdf: str, dpi: int = 300) -> str:
+        """
+        Extrai texto usando OCR (para PDFs escaneados)
+        Renderiza cada página como imagem e aplica pytesseract
+        """
+        if not HAS_OCR or not HAS_PYMUPDF:
+            return ""
+        
+        texto_completo = []
+        try:
+            doc = fitz.open(caminho_pdf)
+            for i in range(len(doc)):
+                page = doc[i]
+                # Renderiza página em imagem de alta resolução
+                pix = page.get_pixmap(dpi=dpi)
+                img_bytes = pix.tobytes("png")
+                img = Image.open(io.BytesIO(img_bytes))
+                
+                # Aplica OCR em português
+                texto = pytesseract.image_to_string(img, lang="por")
+                if texto.strip():
+                    texto_completo.append(f"\n--- OCR PÁGINA {i+1} ---\n{texto}")
+            
+            doc.close()
+        except Exception as e:
+            print(f"  [ERRO] OCR falhou: {e}")
+            print(f"  [DICA] Certifique-se de que o Tesseract está instalado:")
+            print(f"         Windows: https://github.com/UB-Mannheim/tesseract/wiki")
+            print(f"         Linux: sudo apt-get install tesseract-ocr tesseract-ocr-por")
+        
         return "\n".join(texto_completo)
 
     def _texto_parece_corrompido(self, texto: str) -> bool:
@@ -68,6 +128,7 @@ class ExtratorCertificado:
         # Procura padroes de data corrompida (ex: 033310///000676//22/0202025255)
         padrao_corrompido = r'\d{3,}///\d{3,}//\d{2}/\d{6,}'
         return bool(re.search(padrao_corrompido, texto))
+
 
     def _buscar_data_agressivo(self, texto: str, contexto: str) -> Optional[str]:
         """Busca data de forma agressiva quando padroes normais falham"""
@@ -278,8 +339,174 @@ class ExtratorCertificado:
 
         return grandezas
 
+    def _eh_certificado_gmetro(self, texto: str) -> bool:
+        """Verifica se o certificado é do formato Gmetro"""
+        # Procura por indicadores únicos do Gmetro
+        indicadores = [
+            r'Gmetro',
+            r'REDE BRASILEIRA DE CALIBRAÇÃO',
+            r'Laboratório de Metrologia Dimensional',
+            r'CAL\s*\d{4}'  # CAL 0456
+        ]
+        
+        matches = sum(1 for padrao in indicadores if re.search(padrao, texto, re.IGNORECASE))
+        return matches >= 2  # Precisa ter pelo menos 2 indicadores
+
+    def _extrair_gmetro(self, texto: str, nome_arquivo: str) -> Dict[str, Any]:
+        """Extrai informações específicas do formato Gmetro"""
+        
+        # Nº do Certificado
+        identificacao = self.buscar_campo(texto, [
+            r'(GMB\d+/\d+)',  # Padrão direto GMB032/23 com grupo de captura
+            r'([A-Z]{3}\d+/\d+)',  # Padrão genérico ABC123/45
+            r'N[°º]\s+do\s+Certificado\s*\n\s*([A-Z0-9/]+)',  # Com quebra de linha
+        ])
+        
+        # Se não encontrou, usa o nome do arquivo
+        if identificacao == 'n/i':
+            identificacao = Path(nome_arquivo).stem
+        
+        # Requisitante (Cliente)
+        cliente = self.buscar_campo(texto, [
+            r'Requisitante:\s*([^\n]+?)(?:\s*Av\.|$)',
+            r'Requisitante:\s*([^\n]+)'
+        ])
+        
+        # Endereço do cliente
+        endereco = self.buscar_campo(texto, [
+            r'Av\.\s+([^\n]+)',
+            r'Rua\s+([^\n]+)',
+            r'Requisitante:[^\n]+\n\s*([^\n]+)'
+        ])
+        
+        # Local da Calibração
+        local_calibracao = self.buscar_campo(texto, [
+            r'Local\s+da\s+Calibra[çc][ãa]o:\s*([^\n]+)'
+        ])
+        
+        # Equipamento Calibrado - seção específica
+        # Procura pela seção "1. Equipamento Calibrado" ou similar
+        nome = self.buscar_campo(texto, [
+            r'(?:1\.\s*)?Equipamento\s+Calibrado[:\s]+([^\n]+)',
+            r'Bra[çc]o\s+de\s+Medi[çc][ãa]o\s+Articulado',
+            r'(?:1\.\s*)?Equipamento\s+Calibrado[^\n]*\n\s*([^\n]+)'
+        ])
+        
+        # Modelo
+        modelo = self.buscar_campo(texto, [
+            r'Modelo:\s*([^\n]+?)(?:\s+Fabricante|$)',
+            r'Modelo:\s*([^\s]+)'
+        ])
+        
+        # Fabricante
+        fabricante = self.buscar_campo(texto, [
+            r'Fabricante:\s*([^\n]+?)(?:\s+N[°º]|Resolu|$)',
+            r'Fabricante:\s*([^\s]+(?:\s+[^\s]+)?)'  # Pega até 2 palavras
+        ])
+        
+        # Nº de Série
+        numero_serie = self.buscar_campo(texto, [
+            r'N[°º]\s+de\s+S[eé]rie:\s*([^\n]+?)(?:\s+Resolu|$)',
+            r'N[°º]\s+de\s+S[eé]rie:\s*([^\s]+(?:\s+[^\s]+)*)'
+        ])
+        
+        # Resolução
+        resolucao = self.buscar_campo(texto, [
+            r'Resolu[çc][ãa]o\s*\(mm\):\s*([0-9,\.]+)',
+            r'Resolu[çc][ãa]o:\s*([0-9,\.]+)'
+        ])
+        
+        # Software
+        software = self.buscar_campo(texto, [
+            r'Software:\s*([^\n]+)',
+            r'Software:\s*([^\s]+(?:\s+[^\s]+)?)'
+        ])
+        
+        # Condição do Item
+        condicao = self.buscar_campo(texto, [
+            r'Condi[çc][ãa]o\s+do\s+Item:\s*([^\n]+)'
+        ])
+        
+        # Datas - formato Gmetro (aparecem em sequência na mesma linha do certificado)
+        # Formato: GMB032/23 07/06/2023 07/06/2023 12/06/2023
+        # Procura pela linha que contém o número do certificado e extrai as 3 datas
+        match_linha_datas = re.search(
+            r'GMB\d+/\d+\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})',
+            texto
+        )
+        
+        if match_linha_datas:
+            # Converte para formato YYYY-MM-DD
+            def converter_data(data_br):
+                dia, mes, ano = data_br.split('/')
+                return f"{ano}-{mes}-{dia}"
+            
+            data_recebimento = converter_data(match_linha_datas.group(1))
+            data_calibracao = converter_data(match_linha_datas.group(2))
+            data_emissao = converter_data(match_linha_datas.group(3))
+        else:
+            # Fallback para padrões individuais
+            data_recebimento = self.buscar_data(texto, [
+                r'Data\s+Recebimento\s+(\d{2}/\d{2}/\d{4})',
+                r'Recebimento[:\s]+(\d{2}/\d{2}/\d{4})'
+            ])
+            
+            data_calibracao = self.buscar_data(texto, [
+                r'Data\s+da\s+Calibra[çc][ãa]o\s+(\d{2}/\d{2}/\d{4})',
+                r'Calibra[çc][ãa]o[:\s]+(\d{2}/\d{2}/\d{4})'
+            ])
+            
+            data_emissao = self.buscar_data(texto, [
+                r'Data\s+da\s+Emiss[ãa]o\s+(\d{2}/\d{2}/\d{4})',
+                r'Emiss[ãa]o[:\s]+(\d{2}/\d{2}/\d{4})'
+            ])
+        
+        
+        
+        # Extrai grandezas (usa o método padrão)
+        grandezas = self.extrair_grandezas(texto)
+        
+        # Se encontrou resolução, adiciona/atualiza nas grandezas
+        if resolucao != 'n/i' and grandezas:
+            grandezas[0]['resolucao'] = f"{resolucao} mm"
+            grandezas[0]['unidade'] = 'mm'
+        
+        # Monta o instrumento
+        instrumento = {
+            'identificacao': identificacao,
+            'nome': nome,
+            'fabricante': fabricante,
+            'modelo': modelo,
+            'numero_serie': numero_serie,
+            'descricao': f"{nome} - {modelo}" if modelo != 'n/i' else nome,
+            'periodicidade': 12,
+            'departamento': endereco,
+            'responsavel': cliente,
+            'tipo_familia': nome,
+            'serie_desenv': None,
+            'criticidade': None,
+            'motivo_calibracao': 'Calibração Periódica',
+            'status': 'Sem Calibração',
+            'quantidade': 1,
+            'data_calibracao': data_calibracao,
+            'data_emissao': data_emissao,
+            'data_recebimento': data_recebimento,  # Campo extra do Gmetro
+            'local_calibracao': local_calibracao,  # Campo extra do Gmetro
+            'software': software,  # Campo extra do Gmetro
+            'condicao': condicao,  # Campo extra do Gmetro
+            'grandezas': grandezas,
+            'arquivo_origem': nome_arquivo,
+            'laboratorio': 'Gmetro'  # Identifica a origem
+        }
+        
+        return instrumento
+
     def extrair_instrumento(self, texto: str, nome_arquivo: str) -> Dict[str, Any]:
         """Extrai todas as informações do instrumento do certificado"""
+        
+        # Verifica se é um certificado Gmetro
+        if self._eh_certificado_gmetro(texto):
+            return self._extrair_gmetro(texto, nome_arquivo)
 
         # Primeiro extrai o nome do item calibrado
         nome = self.buscar_campo(texto, [

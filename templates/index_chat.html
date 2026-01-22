@@ -614,72 +614,118 @@
                 html += '</div>';
             } else if (comando.includes('lista') || comando.includes('listar')) {
                 // Lista simples
+                let errosProcessamento = [];
                 instrumentos.forEach((inst, idx) => {
-                    const nomeArquivo = inst.arquivo_origem ? inst.arquivo_origem.split(/[\\/]/).pop().replace('.pdf', '') : `Instrumento ${idx + 1}`;
-                    const temData = inst.data_calibracao && inst.data_calibracao !== 'n/i';
-                    const alertaData = temData ? '' : ' ⚠️';
+                    try {
+                        // Trata arquivo_origem que pode ser string ou array
+                        let nomeArquivo = `Instrumento ${idx + 1}`;
+                        if (inst.arquivo_origem) {
+                            if (typeof inst.arquivo_origem === 'string') {
+                                nomeArquivo = inst.arquivo_origem.split(/[\\\/]/).pop().replace('.pdf', '');
+                            } else if (Array.isArray(inst.arquivo_origem)) {
+                                nomeArquivo = inst.arquivo_origem[0].split(/[\\\/]/).pop().replace('.pdf', '');
+                            }
+                        }
 
-                    html += `<div class="instrument-card">`;
-                    html += `<div class="instrument-title">📄 ${nomeArquivo}${alertaData}</div>`;
-                    html += `<div class="quick-view">`;
+                        const temData = inst.data_calibracao && inst.data_calibracao !== 'n/i';
+                        const alertaData = temData ? '' : ' ⚠️';
 
-                    if (inst.identificacao && inst.identificacao !== 'n/i') {
-                        html += `<div class="quick-item"><span class="quick-label">TAG:</span><span class="quick-value">${inst.identificacao}</span></div>`;
-                    }
-                    if (inst.nome && inst.nome !== 'n/i') {
-                        html += `<div class="quick-item"><span class="quick-label">Nome:</span><span class="quick-value">${inst.nome}</span></div>`;
-                    }
-                    if (inst.fabricante && inst.fabricante !== 'n/i') {
-                        html += `<div class="quick-item"><span class="quick-label">Fabricante:</span><span class="quick-value">${inst.fabricante}</span></div>`;
-                    }
-                    if (inst.modelo && inst.modelo !== 'n/i') {
-                        html += `<div class="quick-item"><span class="quick-label">Modelo:</span><span class="quick-value">${inst.modelo}</span></div>`;
-                    }
-                    if (inst.data_calibracao && inst.data_calibracao !== 'n/i') {
-                        html += `<div class="quick-item"><span class="quick-label">Data Calib.:</span><span class="quick-value">${inst.data_calibracao}</span></div>`;
-                    }
+                        html += `<div class="instrument-card">`;
+                        html += `<div class="instrument-title">📄 ${nomeArquivo}${alertaData}</div>`;
+                        html += `<div class="quick-view">`;
 
-                    html += `</div></div>`;
+                        if (inst.identificacao && inst.identificacao !== 'n/i') {
+                            html += `<div class="quick-item"><span class="quick-label">TAG:</span><span class="quick-value">${inst.identificacao}</span></div>`;
+                        }
+                        if (inst.nome && inst.nome !== 'n/i') {
+                            html += `<div class="quick-item"><span class="quick-label">Nome:</span><span class="quick-value">${inst.nome}</span></div>`;
+                        }
+                        if (inst.fabricante && inst.fabricante !== 'n/i') {
+                            html += `<div class="quick-item"><span class="quick-label">Fabricante:</span><span class="quick-value">${inst.fabricante}</span></div>`;
+                        }
+                        if (inst.modelo && inst.modelo !== 'n/i') {
+                            html += `<div class="quick-item"><span class="quick-label">Modelo:</span><span class="quick-value">${inst.modelo}</span></div>`;
+                        }
+                        if (inst.data_calibracao && inst.data_calibracao !== 'n/i') {
+                            html += `<div class="quick-item"><span class="quick-label">Data Calib.:</span><span class="quick-value">${inst.data_calibracao}</span></div>`;
+                        }
+
+                        html += `</div></div>`;
+                    } catch (error) {
+                        console.error(`Erro ao processar instrumento ${idx + 1}:`, error);
+                        errosProcessamento.push(`Instrumento ${idx + 1}: ${error.message}`);
+                    }
                 });
+
+                // Adiciona aviso de erros no final, se houver
+                if (errosProcessamento.length > 0) {
+                    html += `<div style="padding: 12px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; margin-top: 12px;">`;
+                    html += `<strong>⚠️ Avisos de processamento:</strong><br>`;
+                    html += errosProcessamento.join('<br>');
+                    html += `</div>`;
+                }
             } else {
                 // Visualização completa em tabela
+                let errosProcessamento = [];
                 instrumentos.slice(0, 5).forEach((inst, idx) => {
-                    const nomeArquivo = inst.arquivo_origem ? inst.arquivo_origem.split(/[\\/]/).pop().replace('.pdf', '') : `Instrumento ${idx + 1}`;
-                    const temData = inst.data_calibracao && inst.data_calibracao !== 'n/i';
-                    const alertaData = temData ? '' : ' ⚠️ <span style="color: #ff9800; font-size: 12px;">Sem data</span>';
-
-                    html += `<div class="instrument-card">`;
-                    html += `<div class="instrument-title">📄 ${nomeArquivo}${alertaData}</div>`;
-                    html += '<div class="data-table">';
-
-                    const campos = [
-                        ['Identificação', inst.identificacao],
-                        ['Nome', inst.nome],
-                        ['Fabricante', inst.fabricante],
-                        ['Modelo', inst.modelo],
-                        ['Nº Série', inst.numero_serie],
-                        ['Responsável', inst.responsavel],
-                        ['Departamento', inst.departamento],
-                        ['Data Calibração', inst.data_calibracao],
-                        ['Data Emissão', inst.data_emissao]
-                    ];
-
-                    campos.forEach(([label, value]) => {
-                        if (value && value !== 'n/i') {
-                            html += `
-                                <div class="data-row">
-                                    <div class="data-label">${label}</div>
-                                    <div class="data-value">${value}</div>
-                                </div>
-                            `;
+                    try {
+                        // Trata arquivo_origem que pode ser string ou array
+                        let nomeArquivo = `Instrumento ${idx + 1}`;
+                        if (inst.arquivo_origem) {
+                            if (typeof inst.arquivo_origem === 'string') {
+                                nomeArquivo = inst.arquivo_origem.split(/[\\\/]/).pop().replace('.pdf', '');
+                            } else if (Array.isArray(inst.arquivo_origem)) {
+                                nomeArquivo = inst.arquivo_origem[0].split(/[\\\/]/).pop().replace('.pdf', '');
+                            }
                         }
-                    });
 
-                    html += '</div></div>';
+                        const temData = inst.data_calibracao && inst.data_calibracao !== 'n/i';
+                        const alertaData = temData ? '' : ' ⚠️ <span style="color: #ff9800; font-size: 12px;">Sem data</span>';
+
+                        html += `<div class="instrument-card">`;
+                        html += `<div class="instrument-title">📄 ${nomeArquivo}${alertaData}</div>`;
+                        html += '<div class="data-table">';
+
+                        const campos = [
+                            ['Identificação', inst.identificacao],
+                            ['Nome', inst.nome],
+                            ['Fabricante', inst.fabricante],
+                            ['Modelo', inst.modelo],
+                            ['Nº Série', inst.numero_serie],
+                            ['Responsável', inst.responsavel],
+                            ['Departamento', inst.departamento],
+                            ['Data Calibração', inst.data_calibracao],
+                            ['Data Emissão', inst.data_emissao]
+                        ];
+
+                        campos.forEach(([label, value]) => {
+                            if (value && value !== 'n/i') {
+                                html += `
+                                    <div class="data-row">
+                                        <div class="data-label">${label}</div>
+                                        <div class="data-value">${value}</div>
+                                    </div>
+                                `;
+                            }
+                        });
+
+                        html += '</div></div>';
+                    } catch (error) {
+                        console.error(`Erro ao processar instrumento ${idx + 1}:`, error);
+                        errosProcessamento.push(`Instrumento ${idx + 1}: ${error.message}`);
+                    }
                 });
 
                 if (instrumentos.length > 5) {
                     html += `<br><em>... e mais ${instrumentos.length - 5} instrumento(s)</em>`;
+                }
+
+                // Adiciona aviso de erros no final, se houver
+                if (errosProcessamento.length > 0) {
+                    html += `<div style="padding: 12px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; margin-top: 12px;">`;
+                    html += `<strong>⚠️ Avisos de processamento:</strong><br>`;
+                    html += errosProcessamento.join('<br>');
+                    html += `</div>`;
                 }
             }
 
