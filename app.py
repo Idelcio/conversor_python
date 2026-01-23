@@ -47,6 +47,13 @@ def upload_page():
     return render_template('index.html')
 
 
+@app.route('/json-editor')
+def json_editor():
+    """Editor JSON interativo"""
+    return render_template('index_json_editor.html')
+
+
+
 @app.route('/processar', methods=['POST'])
 def processar_pdfs():
     """Processa os PDFs enviados e retorna JSON"""
@@ -435,6 +442,7 @@ def chat_extrair():
                     'success': True,
                     'is_greeting': True,  # Força exibição como mensagem
                     'message': preview_html,
+                    'instrumentos': instrumentos_sessao,  # Adiciona os dados para permitir JSON
                     'powered_by': 'Dados da Sessão (com edições)'
                 })
             else:

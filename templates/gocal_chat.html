@@ -1079,30 +1079,11 @@
                 removeLastMessage();
 
                 if (data.success) {
-                    if (data.is_greeting) {
-                        // Se vier com instrumentos (dados da sessão), salva e mostra JSON
-                        if (data.instrumentos && Array.isArray(data.instrumentos)) {
-                            extractedData = data.instrumentos;
-
-                            // Mostra JSON formatado
-                            const jsonHTML = renderEditableJSON(data.instrumentos);
-                            addBotMessage(jsonHTML);
-                            actionBar.classList.add('show');
-
-                            // Atualiza o botão para "Ver como Lista"
-                            const toggleBtn = document.querySelector('.action-btn[onclick="toggleJSONView()"]');
-                            if (toggleBtn) {
-                                toggleBtn.textContent = '📋 Ver como Lista';
-                                isJSONView = true;
-                            }
-                        } else {
-                            // Mensagem normal (cumprimento, etc)
-                            addBotMessage(data.message);
-                        }
-                    } else {
+                    // Verifica se tem dados de instrumentos
+                    if (data.instrumentos && Array.isArray(data.instrumentos) && data.instrumentos.length > 0) {
                         extractedData = data.instrumentos;
 
-                        // MUDANÇA: Mostra JSON editável por padrão ao invés da lista
+                        // Mostra JSON formatado
                         const jsonHTML = renderEditableJSON(data.instrumentos);
                         addBotMessage(jsonHTML);
                         actionBar.classList.add('show');
@@ -1113,9 +1094,12 @@
                             toggleBtn.textContent = '📋 Ver como Lista';
                             isJSONView = true;
                         }
+                    } else {
+                        // Mensagem de texto normal (resposta da IA)
+                        addBotMessage(data.message);
                     }
                 } else {
-                    addBotMessage(`❌ ${data.message}`);
+                    addBotMessage(`Erro: ${data.message}`);
                 }
             } catch (error) {
                 removeLastMessage();
@@ -1427,14 +1411,20 @@
 
         function renderEditableJSON(data) {
             let html = '<div class="json-editor-container">';
+            // Header com botao no topo
             html += '<div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">';
             html += '<div>';
             html += '<strong style="color: var(--accent-primary);">📝 Editor de Campos</strong>';
             html += '<span style="margin-left: 12px; font-size: 12px; color: var(--text-secondary);">Clique nos campos para editar</span>';
             html += '</div>';
-            html += '<button onclick="saveAllEdits()" style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">� Salvar Edições</button>';
+            html += '<button onclick="saveAllEdits()" style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">Salvar Edicoes</button>';
             html += '</div>';
+            // Conteudo do JSON
             html += createJSONNode(data, 'instrumentos', '');
+            // Footer com botao no final
+            html += '<div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">';
+            html += '<button onclick="saveAllEdits()" style="padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;">Salvar Edicoes</button>';
+            html += '</div>';
             html += '</div>';
             return html;
         }

@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenAI Extractor - Metron</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .security-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            margin-top: 15px;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 12px;
+            padding: 60px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9ff;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+            transform: translateY(-2px);
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e8ebff;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        .upload-text {
+            font-size: 18px;
+            color: #667eea;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .upload-hint {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .file-list {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .file-item {
+            background: #f8f9ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .file-icon {
+            font-size: 24px;
+        }
+
+        .file-name {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .file-size {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .file-remove {
+            background: #ff4757;
+            color: white;
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.2s ease;
+        }
+
+        .file-remove:hover {
+            background: #ff3838;
+            transform: scale(1.1);
+        }
+
+        .extract-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 18px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .extract-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .extract-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .results {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .result-card {
+            background: #f8f9ff;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .result-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .copy-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .copy-btn:hover {
+            background: #764ba2;
+        }
+
+        .json-viewer {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .json-key {
+            color: #66d9ef;
+        }
+
+        .json-string {
+            color: #a6e22e;
+        }
+
+        .json-number {
+            color: #ae81ff;
+        }
+
+        .json-boolean {
+            color: #fd971f;
+        }
+
+        .json-null {
+            color: #999;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            display: none;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .loading-text {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .error {
+            background: #fff5f5;
+            border-left: 4px solid #ff4757;
+            padding: 15px;
+            border-radius: 8px;
+            color: #c53030;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .security-info {
+            background: #f0fff4;
+            border-left: 4px solid #48bb78;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 13px;
+            color: #2f855a;
+        }
+
+        .security-info strong {
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .action-btn {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .action-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .action-btn.primary {
+            background: #48bb78;
+            border-color: #48bb78;
+            color: white;
+        }
+
+        .action-btn.primary:hover {
+            background: #38a169;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Metron - Extrator de Certificados</h1>
+            <p>Extração inteligente de certificados com IA avançada</p>
+            <div class="security-badge">🔒 Powered by Gocal</div>
+        </div>
+
+        <div class="content">
+            <!-- Upload Area -->
+            <div class="upload-area" id="uploadArea">
+                <input type="file" id="fileInput" multiple accept=".pdf" style="display: none;">
+                <div class="upload-icon">📄</div>
+                <div class="upload-text">Arraste PDFs aqui ou clique para selecionar</div>
+                <div class="upload-hint">Certificados de calibração em PDF</div>
+            </div>
+
+            <!-- File List -->
+            <div class="file-list" id="fileList"></div>
+
+            <!-- Extract Button -->
+            <button class="extract-btn" id="extractBtn" disabled>
+                🚀 Extrair com IA
+            </button>
+
+            <!-- Security Info -->
+            <div class="security-info">
+                <strong>🔒 Segurança Garantida:</strong>
+                Este sistema APENAS extrai dados de certificados. Perguntas off-topic são automaticamente bloqueadas.
+            </div>
+
+            <!-- Loading -->
+            <div class="loading" id="loading">
+                <div class="loading-spinner"></div>
+                <div class="loading-text">Processando com Gocal IA...</div>
+            </div>
+
+            <!-- Error -->
+            <div class="error" id="error"></div>
+
+            <!-- Results -->
+            <div class="results" id="results"></div>
+        </div>
+    </div>
+
+    <script>
+        let uploadedFiles = [];
+        let extractedData = [];
+
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const extractBtn = document.getElementById('extractBtn');
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const results = document.getElementById('results');
+
+        // Upload handlers
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            uploadedFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+
+            if (uploadedFiles.length === 0) {
+                showError('Por favor, selecione apenas arquivos PDF');
+                return;
+            }
+
+            renderFileList();
+            extractBtn.disabled = false;
+            hideError();
+        }
+
+        function renderFileList() {
+            if (uploadedFiles.length === 0) {
+                fileList.style.display = 'none';
+                return;
+            }
+
+            fileList.style.display = 'block';
+            fileList.innerHTML = uploadedFiles.map((file, idx) => {
+                const sizeKB = (file.size / 1024).toFixed(1);
+                return `
+                    <div class="file-item">
+                        <div class="file-info">
+                            <div class="file-icon">📄</div>
+                            <div>
+                                <div class="file-name">${file.name}</div>
+                                <div class="file-size">${sizeKB} KB</div>
+                            </div>
+                        </div>
+                        <button class="file-remove" onclick="removeFile(${idx})">×</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function removeFile(idx) {
+            uploadedFiles.splice(idx, 1);
+            renderFileList();
+            if (uploadedFiles.length === 0) {
+                extractBtn.disabled = true;
+            }
+        }
+
+        // Extract
+        extractBtn.addEventListener('click', async () => {
+            if (uploadedFiles.length === 0) return;
+
+            showLoading();
+            hideError();
+            results.style.display = 'none';
+            extractBtn.disabled = true;
+
+            try {
+                const formData = new FormData();
+                uploadedFiles.forEach(file => {
+                    formData.append('pdfs', file);
+                });
+
+                const response = await fetch('/openai-extract', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                hideLoading();
+
+                if (data.success) {
+                    extractedData = data.instrumentos;
+                    renderResults(data.instrumentos);
+                } else {
+                    showError(data.message || 'Erro ao processar PDFs');
+                }
+            } catch (err) {
+                hideLoading();
+                showError('Erro ao conectar com o servidor: ' + err.message);
+            } finally {
+                extractBtn.disabled = false;
+            }
+        });
+
+        function renderResults(instrumentos) {
+            results.style.display = 'block';
+            results.innerHTML = instrumentos.map((inst, idx) => {
+                const jsonString = JSON.stringify(inst, null, 2);
+                const highlighted = syntaxHighlight(jsonString);
+
+                return `
+                    <div class="result-card">
+                        <div class="result-header">
+                            <div class="result-title">📄 ${inst.arquivo_origem || `Instrumento ${idx + 1}`}</div>
+                            <button class="copy-btn" onclick="copyJSON(${idx})">📋 Copiar JSON</button>
+                        </div>
+                        <div class="json-viewer">${highlighted}</div>
+                    </div>
+                `;
+            }).join('');
+
+            // Action buttons
+            results.innerHTML += `
+                <div class="action-buttons">
+                    <button class="action-btn" onclick="downloadJSON()">💾 Baixar JSON</button>
+                    <button class="action-btn primary" onclick="insertDatabase()">✅ Inserir no Banco</button>
+                </div>
+            `;
+        }
+
+        function syntaxHighlight(json) {
+            json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                let cls = 'json-number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) {
+                        cls = 'json-key';
+                    } else {
+                        cls = 'json-string';
+                    }
+                } else if (/true|false/.test(match)) {
+                    cls = 'json-boolean';
+                } else if (/null/.test(match)) {
+                    cls = 'json-null';
+                }
+                return '<span class="' + cls + '">' + match + '</span>';
+            });
+        }
+
+        function copyJSON(idx) {
+            const jsonString = JSON.stringify(extractedData[idx], null, 2);
+            navigator.clipboard.writeText(jsonString).then(() => {
+                alert('✅ JSON copiado para a área de transferência!');
+            });
+        }
+
+        function downloadJSON() {
+            const jsonString = JSON.stringify(extractedData, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `certificados_openai_${Date.now()}.json`;
+            a.click();
+        }
+
+        async function insertDatabase() {
+            const userId = prompt('Digite o ID do usuário (user_id):');
+            if (!userId) return;
+
+            try {
+                const response = await fetch('/inserir-banco', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        instrumentos: extractedData,
+                        user_id: parseInt(userId)
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('✅ ' + data.message);
+                } else {
+                    alert('❌ ' + data.message);
+                }
+            } catch (err) {
+                alert('❌ Erro: ' + err.message);
+            }
+        }
+
+        function showLoading() {
+            loading.style.display = 'block';
+        }
+
+        function hideLoading() {
+            loading.style.display = 'none';
+        }
+
+        function showError(message) {
+            error.textContent = '❌ ' + message;
+            error.style.display = 'block';
+        }
+
+        function hideError() {
+            error.style.display = 'none';
+        }
+    </script>
+</body>
+
+</html>
