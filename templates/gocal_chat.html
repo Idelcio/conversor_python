@@ -1064,16 +1064,28 @@
             addLoadingMessage();
 
             try {
-                const formData = new FormData();
-                uploadedFiles.forEach(file => {
-                    formData.append('pdfs', file);
-                });
-                formData.append('comando', message);
+                let response;
 
-                const response = await fetch('/chat-extrair', {
-                    method: 'POST',
-                    body: formData
-                });
+                if (uploadedFiles.length > 0) {
+                    // Upload e extracao
+                    const formData = new FormData();
+                    uploadedFiles.forEach(file => {
+                        formData.append('pdfs', file);
+                    });
+                    formData.append('comando', message);
+
+                    response = await fetch('/chat-extrair', {
+                        method: 'POST',
+                        body: formData
+                    });
+                } else {
+                    // Apenas mensagem de texto (usa rota isolada)
+                    response = await fetch('/chat-mensagem', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: message })
+                    });
+                }
 
                 const data = await response.json();
                 removeLastMessage();
@@ -1218,6 +1230,35 @@
                                 `;
                             }
                         });
+
+                        // Show Grandezas
+                        if (inst.grandezas && Array.isArray(inst.grandezas) && inst.grandezas.length > 0) {
+                            html += '<div style="padding: 12px; background: var(--bg-tertiary); border-top: 1px solid var(--border-color);">';
+                            html += '<div style="font-weight: 600; margin-bottom: 8px; font-size: 13px; color: var(--text-secondary);">📏 Grandezas</div>';
+
+                            inst.grandezas.forEach((grand, gIdx) => {
+                                html += `<div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin-bottom: 8px;">`;
+
+                                const grandFields = [
+                                    ['Faixa Nominal', grand.faixa_nominal],
+                                    ['Unidade', grand.unidade],
+                                    ['Resolução', grand.resolucao],
+                                    ['Tolerância', grand.tolerancia_processo],
+                                    ['Critério', grand.criterio_aceitacao]
+                                ];
+
+                                grandFields.forEach(([gLabel, gValue]) => {
+                                    if (gValue && gValue !== 'n/i') {
+                                        html += `<div style="display: flex; font-size: 13px; margin-bottom: 4px;">
+                                            <span style="color: var(--text-tertiary); width: 100px;">${gLabel}:</span>
+                                            <span style="color: var(--text-primary); font-weight: 500;">${gValue}</span>
+                                        </div>`;
+                                    }
+                                });
+                                html += '</div>';
+                            });
+                            html += '</div>';
+                        }
 
                         html += '</div></div>';
                     } catch (error) {
@@ -1494,7 +1535,40 @@
                 html += '</div>';
                 html += '<div class="json-object">';
 
-                Object.entries(value).forEach(([k, v]) => {
+                const entries = Object.entries(value);
+
+                // Define ordem de prioridade
+                const topFields = ['arquivo_origem', 'identificacao', 'nome', 'fabricante', 'modelo', 'numero_serie', 'descricao', 'data_calibracao', 'validade', 'periodicidade', 'departamento', 'responsavel'];
+                const bottomFields = ['grandezas', 'padroes_utilizados', 'observacoes', 'detalhes_calibracao', 'outros_dados'];
+
+                entries.sort((a, b) => {
+                    const keyA = a[0];
+                    const keyB = b[0];
+
+                    const idxA = topFields.indexOf(keyA);
+                    const idxB = topFields.indexOf(keyB);
+                    const botA = bottomFields.indexOf(keyA);
+                    const botB = bottomFields.indexOf(keyB);
+
+                    // 1. Se ambos estão no topo, segue a ordem da lista topFields
+                    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                    // 2. Se apenas A está no topo, ele vem antes
+                    if (idxA !== -1) return -1;
+                    // 3. Se apenas B está no topo, ele vem antes
+                    if (idxB !== -1) return 1;
+
+                    // 4. Se ambos estão no fundo, segue a ordem da lista bottomFields
+                    if (botA !== -1 && botB !== -1) return botA - botB;
+                    // 5. Se apenas A está no fundo, ele vem depois
+                    if (botA !== -1) return 1;
+                    // 6. Se apenas B está no fundo, ele vem depois
+                    if (botB !== -1) return -1;
+
+                    // 7. O resto fica no meio (mantem ordem original ou alfabetica opcional)
+                    return 0;
+                });
+
+                entries.forEach(([k, v]) => {
                     html += createJSONNode(v, k, currentPath);
                 });
 
@@ -1538,54 +1612,65 @@
                 return;
             }
 
-            // Navega pelo objeto e atualiza o valor
-            const parts = path.split('.').filter(p => p);
-            let current = extractedData;
+            // A path gerada no DOM inclui a chave no final.
+            // Ex: "instrumentos.0.identificacao" ou "0.identificacao"
+            // Se extractedData é um array, e a path começa com "instrumentos", removemos.
 
+            let parts = path.split('.').filter(p => p);
+
+            // Corrige se houver root virtual
+            if (parts.length > 0 && parts[0] === 'instrumentos' && Array.isArray(extractedData)) {
+                parts.shift();
+            }
+
+            let current = extractedData;
             console.log('🔍 Navegando:', parts, 'Key:', key, 'Novo valor:', newValue);
 
             try {
-                for (let i = 0; i < parts.length; i++) {
-                    const part = parts[i];
+                // Navega até o objeto pai do valor alvo
+                // Loop vai até penúltimo item, pois o último é a própria chave
+                for (let i = 0; i < parts.length - 1; i++) {
+                    let part = parts[i];
 
-                    if (i === parts.length - 1) {
-                        // Último nível - atualiza o valor
-                        if (Array.isArray(current)) {
-                            const index = parseInt(part);
-                            if (current[index]) {
-                                // Converte para número se necessário
-                                const numValue = parseFloat(newValue);
-                                const finalValue = isNaN(numValue) ? newValue : numValue;
-
-                                // Converte "true"/"false" para boolean
-                                if (newValue === 'true') current[index][key] = true;
-                                else if (newValue === 'false') current[index][key] = false;
-                                else if (newValue === 'null') current[index][key] = null;
-                                else current[index][key] = finalValue;
-
-                                console.log('✅ Valor atualizado em array[' + index + '][' + key + ']:', current[index][key]);
-                            }
-                        } else if (typeof current === 'object') {
-                            // Converte para número se necessário
-                            const numValue = parseFloat(newValue);
-                            const finalValue = isNaN(numValue) ? newValue : numValue;
-
-                            // Converte "true"/"false" para boolean
-                            if (newValue === 'true') current[part][key] = true;
-                            else if (newValue === 'false') current[part][key] = false;
-                            else if (newValue === 'null') current[part][key] = null;
-                            else current[part][key] = finalValue;
-
-                            console.log('✅ Valor atualizado em objeto[' + part + '][' + key + ']:', current[part][key]);
-                        }
-                    } else {
-                        // Navega mais fundo
-                        if (Array.isArray(current)) {
-                            current = current[parseInt(part)];
-                        } else {
-                            current = current[part];
-                        }
+                    if (Array.isArray(current)) {
+                        part = parseInt(part);
                     }
+
+                    if (current[part] === undefined) {
+                        console.error('❌ Caminho inválido (undefined):', part);
+                        return;
+                    }
+                    current = current[part];
+                }
+
+                // Agora current deve ser o objeto que contém a propriedade a ser alterada
+                // A chave é o último item de partes
+                const targetKey = parts[parts.length - 1];
+
+                // Preparação do valor final com conversão de tipos
+                let finalValue = newValue;
+                const trimmed = String(newValue).trim();
+
+                if (trimmed === 'true') finalValue = true;
+                else if (trimmed === 'false') finalValue = false;
+                else if (trimmed === 'null') finalValue = null;
+                else if (trimmed === '') finalValue = '';
+                else {
+                    // Tenta converter para número se parecer número
+                    const num = parseFloat(trimmed);
+                    if (!isNaN(num) && String(num) === trimmed) {
+                        finalValue = num;
+                    }
+                }
+
+                // Log para debug
+                console.log(`📝 Atualizando chave "${targetKey}" para:`, finalValue);
+
+                // Atualiza o valor
+                if (Array.isArray(current)) {
+                    current[parseInt(targetKey)] = finalValue;
+                } else {
+                    current[targetKey] = finalValue;
                 }
 
                 console.log('💾 extractedData atualizado:', extractedData);

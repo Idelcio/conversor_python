@@ -22,4 +22,4 @@ echo ✅ Iniciando servidor Gunicorn...
 echo 📍 Servidor rodando em: http://0.0.0.0:5000
 echo ⏹️  Pressione Ctrl+C para parar
 
-gunicorn -w 4 -b 0.0.0.0:5000 --timeout 300 app:app
+gunicorn -w 4 -b 0.0.0.0:5000 --timeout 300 app_openai:app

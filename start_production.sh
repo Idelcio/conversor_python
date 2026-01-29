@@ -14,13 +14,6 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# Verifica se a GROQ_API_KEY está configurada
-if grep -q "sua_chave_groq_aqui" .env; then
-    echo "❌ Erro: GROQ_API_KEY não configurada no arquivo .env"
-    echo "📝 Edite o arquivo .env e adicione sua chave da API Groq"
-    exit 1
-fi
-
 # Verifica se as dependências estão instaladas
 echo "📦 Verificando dependências..."
 pip install -r requirements.txt
@@ -30,4 +23,4 @@ echo "✅ Iniciando servidor Gunicorn..."
 echo "📍 Servidor rodando em: http://0.0.0.0:5000"
 echo "⏹️  Pressione Ctrl+C para parar"
 
-gunicorn -w 4 -b 0.0.0.0:5000 --timeout 300 app:app
+gunicorn -w 4 -b 0.0.0.0:5000 --timeout 300 app_openai:app
