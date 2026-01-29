@@ -12,6 +12,8 @@ from flask_cors import CORS
 import os
 import tempfile
 from werkzeug.utils import secure_filename
+import concurrent.futures
+import threading
 import uuid
 import json
 import mysql.connector
@@ -61,6 +63,7 @@ except Exception as e:
 
 validator = SecurityValidator()
 extracted_cache = {}  # Cache: {session_id: [dados_extraidos]}
+processing_tasks = {} # Cache de tarefas assincronas {task_id: status}
 
 
 # ============================================================
@@ -103,40 +106,70 @@ def chat_extrair():
             return jsonify({'success': False, 'message': 'Erro: API OpenAI nao configurada.'})
 
         instrumentos = []
+        temp_files = []
+
+        # 1. Salva todos os arquivos temporariamente
         for file in files:
             filename = secure_filename(file.filename)
             is_valid, error = validator.validate_pdf(filename)
             if not is_valid:
                 continue
+            
+            # Gera nome unico para evitar colisao em paralelo
+            unique_filename = f"{uuid.uuid4().hex}_{filename}"
+            temp_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            file.save(temp_path)
+            temp_files.append((temp_path, filename))
 
-            print(f"[PDF] Processando: {filename}")
+        # 2. Funcao de processamento individual
+        def process_single_pdf(args):
+            path, original_name = args
+            print(f"[PDF-THREAD] Iniciando: {original_name}")
             try:
-                temp_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                file.save(temp_path)
-
-                # Extracao via GPT-4o Vision
-                dados = extractor.extract_from_pdf(temp_path, filename)
-
-                # Remove arquivo temporario
+                res = extractor.extract_from_pdf(path, original_name)
+                # Remove arquivo logo apos processar
                 try:
-                    os.remove(temp_path)
+                    os.remove(path)
                 except:
                     pass
-
-                if dados and 'error' not in dados:
-                    instrumentos.append(dados)
-                    print(f"[OK] Extraido: {dados.get('identificacao', dados.get('titulo', 'n/i'))}")
-                else:
-                    print(f"[ERRO] {dados.get('error')}")
-
+                return res
             except Exception as e:
-                print(f"[ERRO] {e}")
+                print(f"[ERRO-THREAD] {original_name}: {e}")
+                return {'error': str(e)}
+
+        # 3. Executa em paralelo (max 5 threads para evitar Rate Limit excessivo)
+        print(f"[PARALELO] Iniciando extracao de {len(temp_files)} arquivos...")
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            results = list(executor.map(process_single_pdf, temp_files))
+
+        # 4. Coleta resultados validos
+        for dados in results:
+            if dados and 'error' not in dados:
+                instrumentos.append(dados)
+                print(f"[OK] Extraido: {dados.get('identificacao', 'n/i')}")
+            else:
+                print(f"[ERRO] Falha na extracao: {dados.get('error') if dados else 'Desconhecido'}")
+
 
         if instrumentos:
             extracted_cache[session_id] = instrumentos
+            
+            # Gera resumo em texto para o chat
+            resumo_msg = f"✅ **{len(instrumentos)} documento(s) analisado(s)!**\n\n"
+            for i, inst in enumerate(instrumentos):
+                ident = inst.get('identificacao') or inst.get('numero_certificado') or 'S/N'
+                nome = inst.get('nome') or inst.get('instrumento') or 'Instrumento'
+                resumo_msg += f"{i+1}. **{ident}** - {nome}\n"
+            
+            # Adiciona aviso de erro se houve falhas
+            falhas = len(files) - len(instrumentos)
+            if falhas > 0:
+                resumo_msg += f"\n⚠️ {falhas} arquivo(s) não foram processados (erro ou segurança)."
+
             return jsonify({
                 'success': True,
-                'message': f'{len(instrumentos)} documento(s) analisado(s) com IA!',
+                'message': resumo_msg,
                 'instrumentos': instrumentos
             })
         else:
@@ -212,6 +245,12 @@ def chat_mensagem():
             'message': 'Aqui estão os dados extraídos:',
             'instrumentos': dados
         })
+        
+    # Comando para limpar sessao
+    if 'limpar' in message.lower() or 'nova sessao' in message.lower() or 'novo arquivo' in message.lower():
+        if session_id in extracted_cache:
+            del extracted_cache[session_id]
+        return jsonify({'success': True, 'message': 'Sessão limpa! Pode enviar um novo arquivo.'})
 
     # Chat normal com GPT-4o
     try:
@@ -252,6 +291,118 @@ INSTRUCOES:
     except Exception as e:
         print(f"[ERRO] Chat Msg: {e}")
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'})
+
+
+@app.route('/limpar-cache', methods=['POST'])
+def limpar_cache():
+    """Limpa o cache de dados extraidos da sessao atual"""
+    if 'session_id' not in session:
+        return jsonify({'success': False, 'message': 'Nenhuma sessao ativa.'})
+    
+    session_id = session['session_id']
+    
+    if session_id in extracted_cache:
+        del extracted_cache[session_id]
+        print(f"[CACHE] Sessao {session_id[:8]}... limpa.")
+    
+    return jsonify({'success': True, 'message': 'Cache limpo com sucesso.'})
+
+
+@app.route('/upload-async', methods=['POST'])
+def upload_async():
+    """Recebe arquivos e inicia processamento em background, retornando task_id"""
+    if 'session_id' not in session:
+        session['session_id'] = str(uuid.uuid4())
+    session_id = session['session_id']
+    
+    files = request.files.getlist('pdfs')
+    if not files or not files[0].filename:
+        return jsonify({'success': False, 'message': 'Sem arquivos'})
+        
+    task_id = str(uuid.uuid4())
+    temp_files_info = [] # (path, name)
+    
+    # Inicializa status da task
+    processing_tasks[task_id] = {
+        'status': 'starting',
+        'total': len(files),
+        'completed': 0,
+        'files': {}, # {filename: status}
+        'results': []
+    }
+    
+    try:
+        # Salva arquivos
+        for file in files:
+            fname = secure_filename(file.filename)
+            unique = f"{uuid.uuid4().hex}_{fname}"
+            path = os.path.join(app.config['UPLOAD_FOLDER'], unique)
+            file.save(path)
+            temp_files_info.append((path, fname))
+            processing_tasks[task_id]['files'][fname] = 'pending'
+            
+        # Funcao Worker (Background)
+        def run_job(tid, files_info, sid):
+            try:
+                 processing_tasks[tid]['status'] = 'running'
+                 instrumentos = []
+                 
+                 def process_one(args):
+                     p, n = args
+                     processing_tasks[tid]['files'][n] = 'processing'
+                     try:
+                         # Extrai
+                         res = extractor.extract_from_pdf(p, n)
+                         try: os.remove(p)
+                         except: pass
+                         
+                         if res and 'error' not in res:
+                             processing_tasks[tid]['files'][n] = 'done'
+                             return res
+                         else:
+                             processing_tasks[tid]['files'][n] = 'error'
+                             return None
+                     except:
+                         processing_tasks[tid]['files'][n] = 'error'
+                         return None
+                 
+                 # Paralelismo
+                 with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                     # Usa as_completed para atualizar contador realtime? 
+                     # Ou map simples. Map é mais facil de coletar ordem, mas as_completed é melhor pra progresso.
+                     future_to_file = {executor.submit(process_one, f): f[1] for f in files_info}
+                     
+                     for future in concurrent.futures.as_completed(future_to_file):
+                         res = future.result()
+                         processing_tasks[tid]['completed'] += 1
+                         if res:
+                             instrumentos.append(res)
+                
+                 # Salva no Cache da Sessao
+                 if sid not in extracted_cache: extracted_cache[sid] = []
+                 extracted_cache[sid].extend(instrumentos)
+                 
+                 processing_tasks[tid]['results'] = instrumentos
+                 processing_tasks[tid]['status'] = 'completed'
+                 print(f"[TASK] {tid} concluida. {len(instrumentos)} itens.")
+                 
+            except Exception as e:
+                 print(f"[TASK-ERR] {e}")
+                 processing_tasks[tid]['status'] = 'error'
+
+        # Lança thread solta
+        threading.Thread(target=run_job, args=(task_id, temp_files_info, session_id)).start()
+        
+        return jsonify({'success': True, 'task_id': task_id})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/upload-status/<task_id>')
+def check_status(task_id):
+    """Retorna o status do processamento assincrono"""
+    return jsonify(processing_tasks.get(task_id, {'status': 'not_found'}))
+
 
 
 # ============================================================
