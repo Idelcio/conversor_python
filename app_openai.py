@@ -316,6 +316,8 @@ def upload_async():
     session_id = session['session_id']
     
     files = request.files.getlist('pdfs')
+    comando = request.form.get('comando')
+
     if not files or not files[0].filename:
         return jsonify({'success': False, 'message': 'Sem arquivos'})
         
@@ -342,7 +344,7 @@ def upload_async():
             processing_tasks[task_id]['files'][fname] = 'pending'
             
         # Funcao Worker (Background)
-        def run_job(tid, files_info, sid):
+        def run_job(tid, files_info, sid, user_cmd):
             try:
                  processing_tasks[tid]['status'] = 'running'
                  instrumentos = []
@@ -352,7 +354,7 @@ def upload_async():
                      processing_tasks[tid]['files'][n] = 'processing'
                      try:
                          # Extrai
-                         res = extractor.extract_from_pdf(p, n)
+                         res = extractor.extract_from_pdf(p, n, user_prompt=user_cmd)
                          try: os.remove(p)
                          except: pass
                          
@@ -391,7 +393,7 @@ def upload_async():
                  processing_tasks[tid]['status'] = 'error'
 
         # Lança thread solta
-        threading.Thread(target=run_job, args=(task_id, temp_files_info, session_id)).start()
+        threading.Thread(target=run_job, args=(task_id, temp_files_info, session_id, comando)).start()
         
         return jsonify({'success': True, 'task_id': task_id})
         

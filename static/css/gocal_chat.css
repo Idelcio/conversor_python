@@ -826,3 +826,32 @@
                 font-size: 12px;
             }
         }
+
+        /* File Progress Bar Styles */
+        .file-progress {
+            height: 4px;
+            background: var(--bg-tertiary);
+            border-radius: 2px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .file-progress-bar {
+            height: 100%;
+            background: var(--accent-primary);
+            width: 0%;
+            transition: width 0.5s ease-out, background 0.3s ease;
+        }
+
+        /* Animação lenta fake para status 'processing' */
+        .file-progress-bar.processing {
+            animation: slowProgress 15s cubic-bezier(0.1, 0.7, 0.1, 1) forwards;
+        }
+
+        @keyframes slowProgress {
+            0% { width: 0%; }
+            10% { width: 30%; }
+            40% { width: 60%; }
+            80% { width: 80%; }
+            100% { width: 85%; } /* Nunca chega a 100% sozinho */
+        }

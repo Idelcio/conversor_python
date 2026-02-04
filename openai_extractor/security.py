@@ -42,39 +42,13 @@ class SecurityValidator:
     @staticmethod
     def is_valid_request(message: str, has_pdf: bool = False) -> Tuple[bool, str]:
         """
-        Valida se a requisição é válida
-        
-        Args:
-            message: Mensagem do usuário
-            has_pdf: Se há PDF anexado
-            
-        Returns:
-            (is_valid, error_message)
+        Valida se a requisição é válida (MODO LIVRE - SEM RESTRICOES)
         """
-        message_lower = message.lower().strip()
-        
-        # Se não tem PDF e não está pedindo upload
-        if not has_pdf and not any(word in message_lower for word in ['upload', 'enviar', 'pdf']):
-            # Verifica se é pergunta off-topic
-            if SecurityValidator._is_off_topic(message_lower):
-                return False, SECURITY_MESSAGES['blocked']
-        
-        # Se tem PDF, sempre válido
-        if has_pdf:
-            return True, ""
-        
-        # Se está pedindo para fazer upload
-        if any(word in message_lower for word in ['upload', 'enviar', 'carregar', 'pdf']):
-            return True, ""
-        
-        # Se menciona palavras válidas
-        if any(word in message_lower for word in SecurityValidator.VALID_KEYWORDS):
-            if not has_pdf:
-                return False, SECURITY_MESSAGES['no_pdf']
-            return True, ""
-        
-        # Caso contrário, bloqueia
-        return False, SECURITY_MESSAGES['off_topic']
+        # Permite qualquer conversacao (Modo ChatGPT)
+        if not message.strip() and not has_pdf:
+             return False, "Por favor, digite algo ou envie um arquivo."
+             
+        return True, ""
     
     @staticmethod
     def _is_off_topic(message: str) -> bool:

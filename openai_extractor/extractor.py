@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 from openai import OpenAI
 import fitz  # PyMuPDF
 
-from .prompts import SYSTEM_PROMPT, EXTRACTION_PROMPT, SECURITY_MESSAGES
+from .prompts import SYSTEM_PROMPT, EXTRACTION_PROMPT, SECURITY_MESSAGES, JSON_SCHEMA_PROMPT, CONVERSATIONAL_PROMPT
 from .security import SecurityValidator
 
 
@@ -71,13 +71,14 @@ class OpenAIExtractor:
             print(f"[ERRO] Erro ao converter PDF: {e}")
             return []
     
-    def extract_from_pdf(self, pdf_path: str, filename: str = "") -> Dict:
+    def extract_from_pdf(self, pdf_path: str, filename: str = "", user_prompt: str = "") -> Dict:
         """
         Extrai dados do certificado usando OpenAI Vision
         
         Args:
             pdf_path: Caminho do PDF
             filename: Nome do arquivo original
+            user_prompt: Pergunta ou instrução especifica do usuário
             
         Returns:
             Dicionário com dados extraídos
@@ -94,6 +95,30 @@ class OpenAIExtractor:
         
         print(f"[IA] Enviando para Gocal IA...")
         
+        # Monta prompt - Lógica Hibrida (Conversa vs JSON vs Resumo)
+        keywords_json = ['extrair', 'json', 'dados', 'tabela', 'banco', 'estruturar', 'xml', 'planilha']
+        
+        is_extraction_request = user_prompt and any(k in user_prompt.lower() for k in keywords_json)
+        
+        if is_extraction_request:
+            # Modo 1: Extração JSON (Explícito)
+            final_text_prompt = JSON_SCHEMA_PROMPT
+            print("[IA] Modo Extracao JSON ativado!")
+            if user_prompt:
+                 final_text_prompt += f"\n\nCONTEXTO DO USUARIO: {user_prompt}"
+        
+        elif user_prompt and user_prompt.strip():
+            # Modo 2: Conversa Livre com Contexto Visual
+            # Usa o .format() ou f-string manual se o prompt tiver chaves {} extras cuidado
+            # O CONVERSATIONAL_PROMPT tem {user_prompt}, entao .format funciona bem se nao tiver outros {}
+            final_text_prompt = CONVERSATIONAL_PROMPT.replace("{user_prompt}", user_prompt)
+            print("[IA] Modo Conversacional ativado!")
+            
+        else:
+            # Modo 3: Resumo Padrão (Sem input do usuário)
+            final_text_prompt = EXTRACTION_PROMPT
+            print("[IA] Modo Resumo Padrão ativado!")
+
         try:
             # Prepara mensagens
             messages = [
@@ -106,7 +131,7 @@ class OpenAIExtractor:
                     "content": [
                         {
                             "type": "text",
-                            "text": EXTRACTION_PROMPT
+                            "text": final_text_prompt
                         }
                     ]
                 }
@@ -150,9 +175,15 @@ class OpenAIExtractor:
             try:
                 dados = json.loads(content)
             except json.JSONDecodeError as e:
-                print(f"[ERRO] JSON invalido. Resposta bruta:")
-                print(content[:500])
-                return {"error": f"Resposta da IA nao esta em formato JSON valido: {str(e)}"}
+                # Fallback para resposta texto-livre (Modo ChatGPT)
+                print(f"[IA] Resposta nao-JSON (texto livre). Adaptando...")
+                dados = {
+                    "identificacao": "Análise IA",
+                    "nome": "Resposta Textual",
+                    "descricao": content, # Conteudo completo
+                    "outros_dados": "Texto extraído em formato livre",
+                    "is_text_response": True
+                }
 
             # Adiciona arquivo de origem
             dados['arquivo_origem'] = filename or os.path.basename(pdf_path)
@@ -193,12 +224,26 @@ class OpenAIExtractor:
             print(f"[BLOQUEADO] Requisicao bloqueada: {clean_message[:50]}...")
             return error_msg
         
-        # Se chegou aqui e não tem PDF, pede upload
+        # Se chegou aqui e não tem PDF, responde como Chat (GPT-4o)
         if not has_pdf:
-            return SECURITY_MESSAGES['no_pdf']
+            try:
+                # Chama API para chat normal
+                response = self.client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": clean_message}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7 
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                print(f"[ERRO] Erro na API (Chat): {e}")
+                return f"Desculpe, tive um problema ao processar sua mensagem: {str(e)}"
         
-        # Caso contrário, processa normalmente
-        return "PDF recebido! Processando extração..."
+        # Se tem PDF, o fluxo segue via /chat-extrair (upload-async), entao aqui so confirma
+        return "PDF carregado. Aguarde o processamento..."
     
     def extract_batch(self, pdf_paths: List[str]) -> List[Dict]:
         """
