@@ -33,7 +33,7 @@ class OpenAIExtractor:
         print("[OK] Gocal IA Extractor inicializado!")
     
     def pdf_to_images(self, pdf_path: str, max_pages: int = 3) -> List[str]:
-        # ...
+        images = []
         
         try:
             doc = fitz.open(pdf_path)
@@ -86,7 +86,8 @@ class OpenAIExtractor:
         print(f"[IA] Enviando para Gocal IA...")
         
         # Monta prompt - Lógica Hibrida (Conversa vs JSON vs Resumo)
-        keywords_json = ['extrair', 'json', 'dados', 'tabela', 'banco', 'estruturar', 'xml', 'planilha']
+        # Palavras-chave RESTRITIVAS para evitar ativar JSON enquanto conversa sobre tabelas
+        keywords_json = ['json', 'banco de dados', 'sql', 'estruturar para banco', 'xml', 'planilha excel']
         
         is_extraction_request = user_prompt and any(k in user_prompt.lower() for k in keywords_json)
         

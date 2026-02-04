@@ -157,6 +157,9 @@ async function sendMessage() {
 
             if (message) {
                 formData.append('comando', message);
+            } else {
+                // Se o usuário não digitou nada, assume modo "Análise Geral" em vez de Extração JSON forçada
+                formData.append('comando', 'resumo e analise geral');
             }
 
             // Envia para endpoint async
@@ -612,13 +615,13 @@ function toggleJSONView() {
         const jsonHTML = renderEditableJSON(extractedData);
         removeLastMessage();
         addBotMessage(jsonHTML);
-        btn.textContent = '📋 Ver como Lista';
+        btn.innerHTML = '📋 Ver como Lista';
     } else {
         // Gera a lista formatada
         const listHTML = gerarVisualizacao(extractedData, lastCommandMessage);
         removeLastMessage();
         addBotMessage(listHTML);
-        btn.textContent = '📝 Ver como JSON';
+        btn.innerHTML = '📊 Extrair Dados';
     }
 }
 
@@ -928,4 +931,11 @@ function saveAllEdits() {
     }, 2000);
 
     console.log('💾 Dados salvos:', extractedData);
+}
+
+// Nova função para solicitar extração explícita
+function solicitarExtracao() {
+    // Envia comando como se fosse o usuário digitando
+    chatInput.value = "Extrair todos os dados em formato JSON para tabela";
+    sendMessage();
 }
