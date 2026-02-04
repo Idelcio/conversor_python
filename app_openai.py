@@ -30,7 +30,12 @@ from openai import OpenAI
 
 # Importa extrator OpenAI Vision
 from openai_extractor.extractor import OpenAIExtractor
+try:
+    from openai_extractor.gemini_adapter import GeminiAdapter
+except ImportError:
+    GeminiAdapter = None
 from openai_extractor.security import SecurityValidator
+from openai_extractor.prompts import SYSTEM_PROMPT
 
 # ============================================================
 # CONFIGURACAO FLASK
@@ -56,7 +61,12 @@ DB_CONFIG = {
 # INICIALIZACAO
 # ============================================================
 try:
-    extractor = OpenAIExtractor()
+    if os.getenv('GOOGLE_API_KEY') and GeminiAdapter:
+        print("[INIT] 🚀 Iniciando com MODO GEMINI (Google)...")
+        extractor = GeminiAdapter()
+    else:
+        print("[INIT] Iniciando com OpenAI...")
+        extractor = OpenAIExtractor()
 except Exception as e:
     print(f"[ERRO] Falha ao inicializar Extrator: {e}")
     extractor = None
@@ -205,21 +215,29 @@ PERGUNTA: "{message}"
 
 Responda de forma direta e util."""
 
-            client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-            completion = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "Voce e o assistente Metron. Responda perguntas sobre os documentos analisados. Se o usuario pedir um dado especifico (ex: 'qual o modelo?'), responda APENAS com a informacao em texto. NAO gere JSON a menos que explicitamente pedido."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
+            # Lógica Hibrida (Gemini ou OpenAI)
+            if hasattr(extractor, 'ask'):
+                resposta = extractor.ask(prompt)
+            else:
+                client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+                completion = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
 
-            resposta = completion.choices[0].message.content
+                resposta = completion.choices[0].message.content
             return jsonify({'success': True, 'message': resposta})
 
         except Exception as e:
+            error_msg = str(e)
+            if "429" in error_msg:
+                return jsonify({'success': True, 'message': '⏳ **Sistema sobrecarregado.** Atingimos o limite de velocidade da IA. Por favor, aguarde 15 segundos e tente novamente.'})
+            
             print(f"[ERRO] Chat: {e}")
-            return jsonify({'success': True, 'message': f'Erro: {str(e)}'})
+            return jsonify({'success': True, 'message': f'Ocorreu um erro ao processar: {error_msg}'})
 
     return jsonify({'success': False, 'message': 'Envie uma mensagem ou um PDF.'})
 
@@ -276,21 +294,28 @@ INSTRUCOES:
 4. NAO gere blocos de JSON na resposta.
 """
 
-        client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-        completion = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "Voce e um assistente util. Responda em texto simples."},
-                {"role": "user", "content": prompt}
-            ]
-        )
+        if hasattr(extractor, 'ask'):
+             resposta = extractor.ask(prompt)
+        else:
+            client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+            completion = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}
+                ]
+            )
 
-        resposta = completion.choices[0].message.content
+            resposta = completion.choices[0].message.content
         return jsonify({'success': True, 'message': resposta})
 
     except Exception as e:
+        error_msg = str(e)
+        if "429" in error_msg:
+             return jsonify({'success': True, 'message': '⏳ **Muitas requisições.** Estamos operando no limite da IA. Aguarde alguns segundos e tente de novo.'})
+
         print(f"[ERRO] Chat Msg: {e}")
-        return jsonify({'success': False, 'message': f'Erro: {str(e)}'})
+        return jsonify({'success': False, 'message': f'Erro técnico: {error_msg}'})
 
 
 @app.route('/limpar-cache', methods=['POST'])
