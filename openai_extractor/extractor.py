@@ -32,30 +32,21 @@ class OpenAIExtractor:
         self.validator = SecurityValidator()
         print("[OK] Gocal IA Extractor inicializado!")
     
-    def pdf_to_images(self, pdf_path: str, max_pages: int = 3) -> List[str]:
-        """
-        Converte páginas do PDF em imagens base64
-        
-        Args:
-            pdf_path: Caminho do PDF
-            max_pages: Número máximo de páginas para processar
-            
-        Returns:
-            Lista de imagens em base64
-        """
-        images = []
+    def pdf_to_images(self, pdf_path: str, max_pages: int = 2) -> List[str]:
+        # ...
         
         try:
             doc = fitz.open(pdf_path)
+            # Limita paginas (Economia: Geralmente dados estao na 1 e 2)
             num_pages = min(len(doc), max_pages)
             
-            print(f"[PDF] Convertendo {num_pages} pagina(s) do PDF em imagens...")
+            print(f"[PDF] Convertendo {num_pages} pagina(s) (Limitado para economia)...")
             
             for page_num in range(num_pages):
                 page = doc[page_num]
                 
-                # Renderiza em alta resolução (300 DPI)
-                pix = page.get_pixmap(dpi=300)
+                # Renderiza em resolucao media (150 DPI) para economizar e ser compativel com detail:low
+                pix = page.get_pixmap(dpi=150)
                 img_bytes = pix.tobytes("png")
                 
                 # Converte para base64
@@ -137,13 +128,18 @@ class OpenAIExtractor:
                 }
             ]
             
+            # Converte PDF para imagens (Limita a 2 paginas para economizar)
+            images = self.pdf_to_images(pdf_path, max_pages=2)
+            
+            # ... (código intermediário omitido, use o contexto correto ao aplicar) ...
+
             # Adiciona imagens
             for img_base64 in images:
                 messages[1]["content"].append({
                     "type": "image_url",
                     "image_url": {
                         "url": f"data:image/png;base64,{img_base64}",
-                        "detail": "high"  # Alta qualidade para melhor OCR
+                        "detail": "low"  # "low" = 85 tokens fixos (MUITO mais barato que high)
                     }
                 })
             
