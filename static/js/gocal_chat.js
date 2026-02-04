@@ -246,7 +246,8 @@ function pollProgress(taskId) {
                     const actionBar = document.getElementById('actionBar');
 
                     if (extractedData.length > 0 && extractedData[0].is_text_response) {
-                        if (actionBar) actionBar.classList.remove('show');
+                        // Não esconde mais a action bar
+                        // if (actionBar) actionBar.classList.remove('show');
 
                         extractedData.forEach((inst) => {
                             // Formata Markdown básico para HTML (quebras de linha e negrito)
@@ -256,7 +257,7 @@ function pollProgress(taskId) {
                             addBotMessage(text);
                         });
                     } else {
-                        if (actionBar) actionBar.classList.add('show');
+                        // if (actionBar) actionBar.classList.add('show');
                         // MODO ESTRUTURADO (Cards JSON)
                         // 1. Resumo Textual
                         let summary = `✅ **Processamento concluído!** (${statusData.results.length} arquivos)<br><br>`;
