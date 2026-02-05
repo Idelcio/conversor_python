@@ -1,5 +1,14 @@
 let uploadedFiles = [];
 let extractedData = null;
+let currentUserId = new URLSearchParams(window.location.search).get('user_id') || null;
+
+// Escuta mensagem do Pai (Widget Loader) com o contexto do usuario
+window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'set_user_ctx') {
+        currentUserId = event.data.user_id;
+        console.log("[Chat] Contexto de usuario recebido:", currentUserId);
+    }
+});
 
 const uploadBox = document.getElementById('uploadBox');
 const fileInput = document.getElementById('fileInput');
@@ -679,12 +688,13 @@ async function insertarNoBanco() {
     }
 
     // Tenta pegar o user_id do campo oculto (injetado pelo Gocal/Widget)
-    // Se não tiver, tenta do prompt manual (fallback)
-    let userId = document.getElementById('integrationUserId').value;
-    if (!userId) {
-        userId = prompt('Digite o ID do usuário (user_id):');
-        if (!userId) return;
+    // Se não tiver, usa contexto do postMessage ou fallback
+    let userId = null;
+    const integrationField = document.getElementById('integrationUserId');
+    if (integrationField && integrationField.value) {
+        userId = integrationField.value;
     }
+    if (!userId) userId = currentUserId || 1;
 
     addLoadingMessage();
 
@@ -1125,4 +1135,34 @@ if (window.innerWidth <= 480) {
     if (closeBtn) closeBtn.style.display = 'block';
 }
 
-// Listener de Enter duplicado removido - ja existe em keypress acima
+// ==========================================
+// ESTILOS DO EDITOR JSON (Injetado dinamicamente)
+// ==========================================
+const styleJSON = document.createElement('style');
+styleJSON.innerHTML = `
+    .json-editor-container { font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.6; color: #444; }
+    .instrument-cards { display: flex; flex-direction: column; gap: 16px; }
+    .instrument-card { border: 1px solid #e0e0e0; border-radius: 8px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden; }
+    .card-header { background: #f8f9fa; padding: 12px 16px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
+    .card-header:hover { background: #f1f3f4; }
+    .card-body { padding: 16px; display: block; }
+    .json-object { margin-left: 20px; border-left: 1px solid #eee; padding-left: 8px; }
+    .json-line { display: flex; align-items: center; margin-bottom: 6px; }
+    .json-key { color: #880088; font-weight: 600; margin-right: 8px; white-space: nowrap; }
+    .json-string { color: #2a8b3c; }
+    .json-number { color: #d32f2f; }
+    .json-boolean { color: #0000ff; font-weight: bold; }
+    .json-null { color: #888; font-style: italic; }
+    .json-input { border: 1px solid #ddd; border-radius: 4px; padding: 4px 8px; font-family: inherit; font-size: inherit; color: inherit; background: #fafafa; width: 100%; max-width: 250px; transition: all 0.2s; }
+    .json-input:focus { border-color: #2196F3; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.1); }
+    .collapse-btn { background: none; border: none; color: #888; cursor: pointer; font-size: 10px; width: 20px; padding: 0; margin-right: 4px; }
+
+    /* Overrides de Layout do Chat (Compacto) */
+    .message-content { font-size: 13px !important; padding: 8px 12px !important; }
+    #chatInput { font-size: 13px !important; padding: 8px !important; min-height: 36px !important; }
+    #attachBtn { width: 36px !important; height: 36px !important; padding: 0 !important; font-size: 18px !important; display: flex !important; align-items: center !important; justify-content: center !important; }
+    #sendBtn { width: 36px !important; height: 36px !important; padding: 0 !important; display: flex !important; align-items: center !important; justify-content: center !important; }
+    .input-area { padding: 10px !important; gap: 8px !important; }
+    .avatar { width: 28px !important; height: 28px !important; font-size: 16px !important; }
+`;
+document.head.appendChild(styleJSON);

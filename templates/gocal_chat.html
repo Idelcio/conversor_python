@@ -61,39 +61,28 @@
                 <div class="message bot">
                     <div class="avatar">🤖</div>
                     <div class="message-content">
-                        Olá, eu sou o Metron, seu assistente.
+                        <strong>Olá, sou o Metron, seu assistente.</strong>
                     </div>
                 </div>
             </div>
 
             <!-- Área de Input -->
             <div class="chat-input-area">
-                <!-- Lista de Arquivos (Movida para Cá) -->
-                <div id="filesList" class="files-list" style="display: none; margin-bottom: 10px;">
-                    <div class="files-list-title">Arquivos Anexados:</div>
-                    <div id="filesContainer"></div>
-                </div>
-
                 <div class="input-wrapper">
-                    <button id="attachBtn" class="attach-btn" title="Adicionar PDF">
+                    <button class="attach-btn" id="attachBtn" title="Anexar PDFs">
                         +
                     </button>
-                    <textarea id="chatInput" class="chat-input" placeholder="Digite ou arraste um PDF..." rows="1"
-                        oninput="this.style.height='auto'; this.style.height=this.scrollHeight+'px'"></textarea>
-                    <button id="sendBtn" class="send-btn">
-                        ▲
-                    </button>
+                    <textarea class="chat-input" id="chatInput" rows="1"
+                        placeholder="Digite sua mensagem ou arraste PDFs aqui... Ex: 'extrair tudo'"
+                        autocomplete="off"></textarea>
+                    <button class="send-btn" id="sendBtn">▲</button>
                 </div>
 
-                <!-- Action Bar (Forçando Flex Row) -->
-                <div class="action-bar" id="actionBar"
-                    style="display: flex; flex-direction: row; gap: 8px; margin-top: 12px; opacity: 1; transform: none; pointer-events: all;">
-                    <button class="action-btn" onclick="solicitarExtracao()"
-                        style="flex: 1; padding: 10px 4px; font-size: 13px;">
+                <div class="action-bar" id="actionBar" style="display: flex; flex-direction: row; gap: 10px;">
+                    <button class="action-btn" onclick="solicitarExtracao()">
                         📊 Extrair Dados
                     </button>
-                    <button class="action-btn" onclick="insertarNoBanco()"
-                        style="flex: 1; padding: 10px 4px; font-size: 13px;">
+                    <button class="action-btn" onclick="insertarNoBanco()">
                         💾 Inserir no Banco
                     </button>
                 </div>
