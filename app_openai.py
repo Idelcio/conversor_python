@@ -52,7 +52,7 @@ app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 DB_CONFIG = {
     'host': '127.0.0.1',
     'port': 3306,
-    'database': 'instrumentos',
+    'database': 'laboratorios',
     'user': 'root',
     'password': ''
 }
@@ -84,7 +84,20 @@ def index():
     """Pagina principal do Chat"""
     if 'session_id' not in session:
         session['session_id'] = str(uuid.uuid4())
-    return render_template('gocal_chat.html')
+    
+    # Captura parametros de integracao (vindo do ERP/Gocal)
+    # Ex: /?user_id=55&token=xyz
+    integration_data = {
+        'user_id': request.args.get('user_id'),
+        'token': request.args.get('token'),
+        'empresa_id': request.args.get('empresa_id')
+    }
+    
+    # Se vier user_id, salva na sessao para uso futuro
+    if integration_data['user_id']:
+        session['gocal_user_id'] = integration_data['user_id']
+
+    return render_template('gocal_chat.html', integration=integration_data)
 
 
 @app.route('/visualizar')
@@ -280,18 +293,39 @@ def chat_mensagem():
                 json_str = json_str[:20000] + "... (troncado)"
             contexto = f"\n\nDADOS DO DOCUMENTO (Contexto):\n{json_str}"
 
+        # Rotas mapeadas da aplicacao
+        APP_ROUTES = {
+            "Dashboard": "/monitoramento",
+            "Monitoramento": "/monitoramento",
+            "Instrumentos": "/instrumentos",
+            "Listar Instrumentos": "/instrumentos",
+            "Novo Instrumento": "/instrumentos/create",
+            "Laboratorios": "/laboratorios",
+            "Listar Laboratorios": "/laboratorios",
+            "Calibracoes": "/calibracoes",
+            "Listar Calibracoes": "/calibracoes",
+            "Nova Calibracao": "/calibracoes/create", 
+            "Perfil": "/profile",
+            "Assinatura": "/profile/signature",
+            "Favoritos": "/favoritos",
+        }
+
         prompt = f"""Voce e o Metron (Assistente Labster).
         
 DADOS ANEXADOS:
 {contexto}
 
+ROTAS DA APLICACAO (Use se o usuario pedir para ir):
+{json.dumps(APP_ROUTES, indent=2)}
+
 USUARIO: "{message}"
 
 INSTRUCOES:
 1. Responda a pergunta do usuario com base nos dados.
-2. Seja direto e objetivo.
-3. Se o usuario pedir apenas um campo (ex: 'modelo'), responda APENAS O VALOR em texto.
-4. NAO gere blocos de JSON na resposta.
+2. Se o usuario pedir para NAVEGAR para alguma tela (ex: "ir para instrumentos"), sua resposta DEVE SER um JSON puro no formato: 
+   {{"message": "Indo para instrumentos...", "navigate_to": "/instrumentos"}}
+3. Se for uma pergunta normal, responda apenas texto.
+4. NAO use JSON se nao for navegacao.
 """
 
         if hasattr(extractor, 'ask'):
@@ -307,6 +341,34 @@ INSTRUCOES:
             )
 
             resposta = completion.choices[0].message.content
+        
+        # Tenta parsear se a IA mandou um JSON (Navegacao ou Checklist)
+        try:
+            # Limpa backticks se a IA colocou ```json ... ```
+            clean_resp = resposta.replace('```json', '').replace('```', '').strip()
+            
+            # Tenta carregar como JSON
+            if clean_resp.startswith('{'):
+                resp_json = json.loads(clean_resp)
+                
+                # Caso 1: Navegação
+                if 'navigate_to' in resp_json:
+                    return jsonify({
+                        'success': True, 
+                        'message': resp_json.get('message', 'Redirecionando...'),
+                        'redirect_url': resp_json['navigate_to']
+                    })
+                
+                # Caso 2: Checklist Automático
+                if 'checklist_data' in resp_json:
+                     return jsonify({
+                        'success': True,
+                        'message': resp_json.get('message', 'Checklist verificado!'),
+                        'auto_checklist': resp_json['checklist_data']
+                    })
+        except:
+            pass # Nao e JSON, segue normal
+
         return jsonify({'success': True, 'message': resposta})
 
     except Exception as e:
@@ -341,10 +403,12 @@ def upload_async():
     session_id = session['session_id']
     
     files = request.files.getlist('pdfs')
+    pdf_url = request.form.get('pdf_url') # Novo parametro
     comando = request.form.get('comando')
 
-    if not files or not files[0].filename:
-        return jsonify({'success': False, 'message': 'Sem arquivos'})
+    has_files = (files and files[0].filename) or pdf_url
+    if not has_files:
+        return jsonify({'success': False, 'message': 'Sem arquivos ou URL'})
         
     task_id = str(uuid.uuid4())
     temp_files_info = [] # (path, name)
@@ -352,21 +416,50 @@ def upload_async():
     # Inicializa status da task
     processing_tasks[task_id] = {
         'status': 'starting',
-        'total': len(files),
+        'total': 1 if pdf_url else len(files),
         'completed': 0,
         'files': {}, # {filename: status}
         'results': []
     }
     
     try:
-        # Salva arquivos
-        for file in files:
-            fname = secure_filename(file.filename)
-            unique = f"{uuid.uuid4().hex}_{fname}"
-            path = os.path.join(app.config['UPLOAD_FOLDER'], unique)
-            file.save(path)
-            temp_files_info.append((path, fname))
-            processing_tasks[task_id]['files'][fname] = 'pending'
+        # 1. Se veio URL, faz download
+        if pdf_url:
+            import requests
+            try:
+                # Nome do arquivo da URL ou padrao
+                fname = pdf_url.split('/')[-1] or "documento_web.pdf"
+                if not fname.lower().endswith('.pdf'): fname += '.pdf'
+                
+                unique = f"{uuid.uuid4().hex}_{fname}"
+                path = os.path.join(app.config['UPLOAD_FOLDER'], unique)
+                
+                # Download
+                response = requests.get(pdf_url, stream=True, verify=False) # verify=False para local/dev
+                if response.status_code == 200:
+                    with open(path, 'wb') as f:
+                        for chunk in response.iter_content(1024):
+                            f.write(chunk)
+                    
+                    temp_files_info.append((path, fname))
+                    processing_tasks[task_id]['files'][fname] = 'pending'
+                else:
+                    return jsonify({'success': False, 'message': f'Erro ao acessar URL: {response.status_code}'})
+            except Exception as e:
+                return jsonify({'success': False, 'message': f'Falha no download: {e}'})
+
+        # 2. Se veio Arquivos (Upload normal)
+        if files and files[0].filename:
+            for file in files:
+                fname = secure_filename(file.filename)
+                unique = f"{uuid.uuid4().hex}_{fname}"
+                path = os.path.join(app.config['UPLOAD_FOLDER'], unique)
+                file.save(path)
+                temp_files_info.append((path, fname))
+                processing_tasks[task_id]['files'][fname] = 'pending'
+            
+            # Recalcula total real
+            processing_tasks[task_id]['total'] = len(temp_files_info)
             
         # Funcao Worker (Background)
         def run_job(tid, files_info, sid, user_cmd):
@@ -435,6 +528,28 @@ def check_status(task_id):
 # ============================================================
 # ROTAS - BANCO DE DADOS (MySQL)
 # ============================================================
+# Normalização de Status para o padrão do Gocal
+def normalizar_status(valor):
+    if not valor:
+        return 'Sem Calibracao'
+    
+    v = valor.lower().strip()
+    
+    # Mapa de correlações
+    if 'pendente' in v or 'aprovacao' in v:
+        return 'Pendente Aprovação'
+    if 'inativo' in v:
+        return 'Inativo'
+    if 'manutencao' in v:
+        return 'Em Manutenção'
+    if 'sem' in v or 'calibracao' in v: # Default se contiver calibração
+        return 'Sem Calibração'
+    if 'em calibracao' in v:
+        return 'Em Calibração'
+        
+    # Default
+    return 'Sem Calibração'
+
 @app.route('/inserir-banco', methods=['POST'])
 def inserir_banco():
     """Insere instrumentos extraidos no MySQL"""
@@ -443,11 +558,19 @@ def inserir_banco():
         user_id = int(data.get('user_id', 1))
 
         if 'session_id' not in session:
-            return jsonify({'success': False, 'message': 'Sessao nao encontrada.'}), 400
+            # Em modo widget/iframe, a sessao pode se perder. 
+            # Aceitamos a insercao se vier com dados validos mesmo sem sessao.
+            pass
 
-        session_id = session['session_id']
-        # Prioriza os dados enviados pelo frontend (que podem ter sido editados)
-        instrumentos = data.get('instrumentos', []) or extracted_cache.get(session_id, [])
+        # session_id = session['session_id'] # Nao obrigatorio
+        session_id = session.get('session_id') # Usa .get para evitar erro se nao existir
+        
+        # Prioriza os dados enviados pelo frontend
+        instrumentos = data.get('instrumentos', [])
+        
+        # Fallback para cache apenas se tiver sessao valida
+        if not instrumentos and session_id:
+             instrumentos = extracted_cache.get(session_id, [])
 
         if not instrumentos:
             return jsonify({'success': False, 'message': 'Nenhum instrumento para inserir.'}), 400
@@ -499,18 +622,22 @@ def inserir_banco():
                 continue
             
             # Mapeia campos principais procurando recursivamente ou usando defaults
-            nome = buscar_valor('nome', inst) or buscar_valor('instrumento', inst) or buscar_valor('titulo', inst)
-            fabricante = buscar_valor('fabricante', inst)
-            modelo = buscar_valor('modelo', inst)
-            numero_serie = buscar_valor('numero_serie', inst) or buscar_valor('serie', inst)
+            nome = buscar_valor('nome', inst) or buscar_valor('instrumento', inst) or buscar_valor('titulo', inst) or 'n/i'
+            fabricante = buscar_valor('fabricante', inst) or 'n/i'
+            modelo = buscar_valor('modelo', inst) or 'n/i'
+            numero_serie = buscar_valor('numero_serie', inst) or buscar_valor('serie', inst) or 'n/i'
             descricao = buscar_valor('descricao', inst) or json.dumps(inst, ensure_ascii=False)[:500]
             periodicidade = buscar_valor('periodicidade', inst, 12)
-            departamento = buscar_valor('departamento', inst) or buscar_valor('cliente', inst) or buscar_valor('localizacao', inst)
-            responsavel = buscar_valor('responsavel', inst) or buscar_valor('solicitante', inst)
-            status = buscar_valor('status', inst, 'Sem Calibracao')
-            tipo_familia = buscar_valor('tipo_familia', inst) or buscar_valor('tipo_documento', inst)
-            serie_desenv = buscar_valor('serie_desenv', inst) or buscar_valor('desenho', inst)
-            criticidade = buscar_valor('criticidade', inst)
+            departamento = buscar_valor('departamento', inst) or buscar_valor('cliente', inst) or buscar_valor('localizacao', inst) or 'n/i'
+            responsavel = buscar_valor('responsavel', inst) or buscar_valor('solicitante', inst) or 'n/i'
+            
+            # Normaliza Status
+            status_bruto = buscar_valor('status', inst, 'Sem Calibracao')
+            status = normalizar_status(status_bruto)
+            
+            tipo_familia = buscar_valor('tipo_familia', inst) or buscar_valor('tipo_documento', inst) or 'n/i'
+            serie_desenv = buscar_valor('serie_desenv', inst) or buscar_valor('desenho', inst) or 'n/i'
+            criticidade = buscar_valor('criticidade', inst) or 'B' # Default B = Baixa/Normal
             motivo_calibracao = buscar_valor('motivo_calibracao', inst, 'Calibracao Periodica')
             # quantidade = buscar_valor('quantidade', inst, 1)
 

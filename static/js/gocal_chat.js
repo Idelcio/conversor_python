@@ -12,6 +12,56 @@ const actionBar = document.getElementById('actionBar');
 const themeToggle = document.getElementById('themeToggle');
 const attachBtn = document.getElementById('attachBtn');
 
+// Contexto do PDF da pagina pai
+let contextPdfUrl = null;
+
+window.addEventListener('message', (e) => {
+    // Recebe URL do PDF detectado pelo widget
+    if (e.data && e.data.type === 'context-pdf-url' && e.data.url) {
+        console.log("PDF Contexto Detectado (Silencioso):", e.data.url);
+        contextPdfUrl = e.data.url;
+        // showContextToast(); // Desativado a pedido do usuario
+
+        // Avisa visualmente no input de forma sutil
+        if (chatInput.placeholder.indexOf('📄') === -1) {
+            chatInput.placeholder = "📄 PDF de contexto detectado. Digite para analisar...";
+        }
+    }
+});
+
+window.analyzeContextPDF = async function () {
+    const toast = document.getElementById('pdf-context-toast');
+    if (toast) toast.remove();
+
+    if (!contextPdfUrl) return;
+
+    addBotMessage('📥 Baixando e analisando o documento da tela...');
+    addLoadingMessage();
+
+    try {
+        const formData = new FormData();
+        formData.append('pdf_url', contextPdfUrl);
+        formData.append('comando', 'analise completa com checklist');
+
+        const response = await fetch('/upload-async', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            pollProgress(data.task_id);
+        } else {
+            removeLastMessage();
+            addBotMessage('❌ Erro ao baixar PDF: ' + data.message);
+        }
+    } catch (e) {
+        removeLastMessage();
+        addBotMessage('Erro técnico: ' + e.message);
+    }
+}
+
 // Theme Toggle
 themeToggle.addEventListener('click', () => {
     const body = document.body;
@@ -53,6 +103,33 @@ chatInput.addEventListener('drop', (e) => {
 });
 
 // Upload handlers (sidebar)
+// ADICIONADO: Drag & Drop na tela inteira (REFORÇADO)
+const events = ['dragenter', 'dragover', 'dragleave', 'drop'];
+
+events.forEach(eventName => {
+    document.body.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    }, false);
+});
+
+document.body.addEventListener('dragover', (e) => {
+    document.body.style.backgroundColor = '#eef';
+});
+
+document.body.addEventListener('dragleave', (e) => {
+    if (e.clientX === 0 || e.clientY === 0) {
+        document.body.style.backgroundColor = '';
+    }
+});
+
+document.body.addEventListener('drop', (e) => {
+    document.body.style.backgroundColor = '';
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleFiles(e.dataTransfer.files);
+    }
+});
+
 uploadBox.addEventListener('click', () => fileInput.click());
 
 
@@ -77,50 +154,45 @@ fileInput.addEventListener('change', (e) => {
 
 function handleFiles(files) {
     uploadedFiles = Array.from(files);
-    renderFilesList();
-    addBotMessage(`✅ ${files.length} arquivo(s) carregado(s)! O que você gostaria de fazer?`);
-}
 
-function renderFilesList() {
-    if (uploadedFiles.length === 0) {
-        filesList.style.display = 'none';
-        return;
+    // VISUAL FEEDBACK IMEDIATO
+    const fileNames = uploadedFiles.map(f => f.name).join(', ');
+
+    // 1. Muda o placeholder
+    chatInput.placeholder = `📄 ${uploadedFiles.length} arquivo(s) carregado(s)`;
+
+    // 2. Mostra caixa visual acima do input
+    const listDiv = document.getElementById('filesList');
+    if (listDiv) {
+        listDiv.style.display = 'block';
+        listDiv.innerHTML = `
+            <div style="background: #e3f2fd; color: #1565c0; padding: 8px; border-radius: 8px; font-size: 13px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; border: 1px solid #90caf9;">
+                <div style="display:flex; align-items:center; gap:6px; overflow:hidden;">
+                    <span>📄</span>
+                    <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;">
+                        ${fileNames}
+                    </span>
+                </div>
+                <button onclick="limparArquivos()" style="background:none; border:none; cursor:pointer; font-size:14px; color:#c62828;">✖</button>
+            </div>
+        `;
     }
 
-    filesList.style.display = 'block';
-    filesContainer.innerHTML = uploadedFiles.map((file, idx) => {
-        const sizeKB = (file.size / 1024).toFixed(1);
-        // Sanitiza nome para usar como ID (remove pontos e espacos)
-        const fileId = 'file-' + file.name.replace(/[^a-zA-Z0-9]/g, '');
-
-        return `
-                    <div class="file-item" id="${fileId}" style="position: relative; overflow: hidden;">
-                        <div class="file-icon">📄</div>
-                        <div class="file-info">
-                            <div class="file-name" title="${file.name}">${file.name}</div>
-                            <div class="file-size">${sizeKB} KB</div>
-                        </div>
-                        <div class="status-icon" id="status-${fileId}"></div>
-                        <button class="file-remove" onclick="removeFile(${idx})" title="Remover">×</button>
-                        <div class="file-progress" style="position: absolute; bottom: 0; left: 0; width: 100%; height: 4px; background: rgba(0,0,0,0.05); display: none;">
-                            <div class="file-progress-bar" style="height: 100%; width: 0%; background: #4CAF50; transition: width 0.5s;"></div>
-                        </div>
-                    </div>
-                `;
-    }).join('');
+    addBotMessage(`✅ ${files.length} arquivo(s) pronto(s)! Clique em 'Extrair Dados' ou digite um comando.`);
 }
 
-function removeFile(idx) {
-    uploadedFiles.splice(idx, 1);
-    renderFilesList();
-    if (uploadedFiles.length === 0) {
-        addBotMessage('Todos os arquivos foram removidos. Sessão limpa.');
+// Expor funcoes para o HTML (Garantia de funcionamento)
+window.handleFiles = handleFiles;
 
-        // Limpa cache se remover arquivos manualmente
-        extractedData = null;
-        fetch('/limpar-cache', { method: 'POST' });
-    }
+function limparArquivos() {
+    uploadedFiles = [];
+    document.getElementById('filesList').style.display = 'none';
+    chatInput.placeholder = "Digite ou arraste um PDF...";
+    fileInput.value = ""; // Limpa o input para permitir selecionar o mesmo arquivo de novo
 }
+window.limparArquivos = limparArquivos;
+
+// Função renderFilesList removida pois foi substituída pelo feedback visual direto em handleFiles.
 
 // Chat handlers
 sendBtn.addEventListener('click', sendMessage);
@@ -131,10 +203,48 @@ chatInput.addEventListener('keypress', (e) => {
     }
 });
 
+// Funcao para pedir o Blob ao pai (Promise-based)
+function getPdfContentFromParent() {
+    return new Promise((resolve, reject) => {
+        // Timeout de seguranca (10s para garantir)
+        const timeout = setTimeout(() => {
+            window.removeEventListener('message', listener);
+            reject("Timeout: Pai não respondeu com o PDF.");
+        }, 10000);
+
+        // Listener temporario
+        const listener = (e) => {
+            if (e.data && e.data.type === 'context-pdf-blob' && e.data.buffer) {
+                clearTimeout(timeout);
+                window.removeEventListener('message', listener);
+
+                // Reconstroi Blob
+                const blob = new Blob([e.data.buffer], { type: 'application/pdf' });
+                resolve(blob);
+            }
+            if (e.data && e.data.type === 'context-pdf-error') {
+                clearTimeout(timeout);
+                window.removeEventListener('message', listener);
+                reject("Erro no Pai: " + e.data.error);
+            }
+            if (e.data && e.data.type === 'context-pdf-not-found') {
+                clearTimeout(timeout);
+                window.removeEventListener('message', listener);
+                reject("PDF não encontrado na página.");
+            }
+        };
+
+        window.addEventListener('message', listener);
+
+        // Pede ao pai
+        window.parent.postMessage('request-pdf-content', '*');
+    });
+}
+
 async function sendMessage() {
     const message = chatInput.value.trim();
     // Se tem arquivos, message pode ser vazio (comando implícito)
-    if (!message && uploadedFiles.length === 0) return;
+    if (!message && uploadedFiles.length === 0 && !contextPdfUrl) return;
 
     if (message) addUserMessage(message);
     chatInput.value = '';
@@ -143,22 +253,43 @@ async function sendMessage() {
     addLoadingMessage();
 
     try {
-        if (uploadedFiles.length > 0) {
-            // MODO ASYNC (Upload com Progresso)
+        if (uploadedFiles.length > 0 || contextPdfUrl) {
+            // MODO ASYNC (Upload com Progresso ou Contexto URL)
 
-            // Mostra barras de progresso vazias
-            document.querySelectorAll('.file-progress').forEach(el => el.style.display = 'block');
-            document.querySelectorAll('.file-remove').forEach(el => el.style.display = 'none'); // Trava remoção
+            // Mostra barras de progresso vazias se tiver arquivo fisico
+            if (uploadedFiles.length > 0) {
+                document.querySelectorAll('.file-progress').forEach(el => el.style.display = 'block');
+                document.querySelectorAll('.file-remove').forEach(el => el.style.display = 'none');
+            }
 
             const formData = new FormData();
+
+            // 1. Adiciona arquivos fisicos (Upload Manual)
             uploadedFiles.forEach(file => {
                 formData.append('pdfs', file);
             });
 
+            // 2. Se nao tem arquivo manual, mas tem Contexto PDF Pede ao pai
+            if (uploadedFiles.length === 0 && contextPdfUrl) {
+                addBotMessage('📥 Baixando documento da tela...');
+                try {
+                    // Pede ao pai o conteudo fisico (bypass CORS)
+                    const pdfBlob = await getPdfContentFromParent();
+                    const pdfFile = new File([pdfBlob], "documento_tela.pdf", { type: "application/pdf" });
+
+                    // Anexa como se fosse um arquivo normal
+                    formData.append('pdfs', pdfFile);
+                } catch (err) {
+                    console.error("Erro ao obter PDF do pai:", err);
+                    addBotMessage('⚠️ Não consegui acessar o documento da tela: ' + err);
+                    removeLastMessage();
+                    return;
+                }
+            }
+
             if (message) {
                 formData.append('comando', message);
             } else {
-                // Se o usuário não digitou nada, assume modo "Análise Geral" em vez de Extração JSON forçada
                 formData.append('comando', 'resumo e analise geral');
             }
 
@@ -189,6 +320,20 @@ async function sendMessage() {
             const data = await response.json();
             removeLastMessage();
             addBotMessage(data.message);
+
+            // Navegação Real
+            if (data.redirect_url) {
+                // Pequeno delay para o usuario ler a mensagem
+                setTimeout(() => {
+                    window.parent.postMessage({ type: 'navigate', url: data.redirect_url }, '*');
+                }, 1000);
+            }
+
+            // Checklist Automático
+            if (data.auto_checklist) {
+                console.log("Aplicando checklist:", data.auto_checklist);
+                window.parent.postMessage({ type: 'fill_checklist', data: data.auto_checklist }, '*');
+            }
         }
 
     } catch (error) {
@@ -244,6 +389,24 @@ function pollProgress(taskId) {
 
                     // VERIFICA SE É RESPOSTA TEXTUAL (CHATGPT-STYLE)
                     const actionBar = document.getElementById('actionBar');
+
+                    // NOVO: Verifica se é um CHECKLIST AUTOMATICO (Via Async)
+                    const firstRes = extractedData[0];
+                    const checklistPayload = firstRes.auto_checklist || firstRes.checklist_data;
+
+                    if (checklistPayload) {
+                        addBotMessage(firstRes.message || "✅ Checklist verificado! Marcando itens na tela...");
+                        window.parent.postMessage({ type: 'fill_checklist', data: checklistPayload }, '*');
+
+                        // Limpa input
+                        fileInput.value = "";
+                        uploadedFiles = [];
+                        contextPdfUrl = null;
+                        chatInput.placeholder = "Digite ou arraste um PDF...";
+                        document.getElementById('filesList').style.display = 'none';
+
+                        return; // Para por aqui
+                    }
 
                     if (extractedData.length > 0 && extractedData[0].is_text_response) {
                         // Não esconde mais a action bar
@@ -511,12 +674,17 @@ function scrollToBottom() {
 
 async function insertarNoBanco() {
     if (!extractedData) {
-        addBotMessage('⚠️ Nenhum dado extraído!');
+        addBotMessage('⚠️ Nenhum dado extraído disponível para inserir. Faça a extração primeiro.');
         return;
     }
 
-    const userId = prompt('Digite o ID do usuário (user_id):');
-    if (!userId) return;
+    // Tenta pegar o user_id do campo oculto (injetado pelo Gocal/Widget)
+    // Se não tiver, tenta do prompt manual (fallback)
+    let userId = document.getElementById('integrationUserId').value;
+    if (!userId) {
+        userId = prompt('Digite o ID do usuário (user_id):');
+        if (!userId) return;
+    }
 
     addLoadingMessage();
 
@@ -526,7 +694,7 @@ async function insertarNoBanco() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 instrumentos: extractedData,
-                user_id: parseInt(userId)
+                user_id: parseInt(userId) // Envia user_id explicitamente
             })
         });
 
@@ -536,11 +704,11 @@ async function insertarNoBanco() {
         if (data.success) {
             addBotMessage(`✅ ${data.message}`);
         } else {
-            addBotMessage(`❌ ${data.message}`);
+            addBotMessage(`❌ Erro ao inserir: ${data.message}`);
         }
     } catch (error) {
         removeLastMessage();
-        addBotMessage(`❌ Erro: ${error.message}`);
+        addBotMessage(`❌ Erro de comunicação: ${error.message}`);
     }
 }
 
@@ -940,3 +1108,21 @@ function solicitarExtracao() {
     chatInput.value = "Extrair todos os dados em formato JSON para tabela";
     sendMessage();
 }
+
+// ==========================================
+// NOVAS FUNÇÕES: Enter e Fechar Mobile
+// ==========================================
+
+// Fechar Widget (Comunica com iframe pai)
+function fecharWidget() {
+    window.parent.postMessage('close-widget', '*');
+}
+window.fecharWidget = fecharWidget;
+
+// Mostrar botao fechar apenas no mobile
+if (window.innerWidth <= 480) {
+    const closeBtn = document.querySelector('.close-mobile');
+    if (closeBtn) closeBtn.style.display = 'block';
+}
+
+// Listener de Enter duplicado removido - ja existe em keypress acima
