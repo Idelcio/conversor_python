@@ -50,11 +50,11 @@ app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 # CONFIGURACAO MYSQL
 # ============================================================
 DB_CONFIG = {
-    'host': '127.0.0.1',
-    'port': 3306,
-    'database': 'laboratorios',
-    'user': 'root',
-    'password': ''
+    'host': os.getenv('DB_HOST', '127.0.0.1'),
+    'port': int(os.getenv('DB_PORT', 3306)),
+    'database': os.getenv('DB_DATABASE', 'laboratorios'),
+    'user': os.getenv('DB_USERNAME', 'root'),
+    'password': os.getenv('DB_PASSWORD', '')
 }
 
 # ============================================================
@@ -74,6 +74,26 @@ except Exception as e:
 validator = SecurityValidator()
 extracted_cache = {}  # Cache: {session_id: [dados_extraidos]}
 processing_tasks = {} # Cache de tarefas assincronas {task_id: status}
+
+# Mapa de correcao de status (sem acento -> com acento)
+STATUS_MAP = {
+    'sem calibracao': 'Sem Calibração',
+    'sem calibração': 'Sem Calibração',
+    'pendente aprovacao': 'Pendente Aprovação',
+    'pendente aprovação': 'Pendente Aprovação',
+    'em calibracao': 'Em Calibração',
+    'em calibração': 'Em Calibração',
+    'em manutencao': 'Em Manutenção',
+    'em manutenção': 'Em Manutenção',
+    'inativo': 'Inativo',
+}
+
+def normalizar_status(status_raw):
+    """Normaliza o status para o formato correto com acentos"""
+    if not status_raw:
+        return 'Sem Calibração'
+    chave = status_raw.strip().lower()
+    return STATUS_MAP.get(chave, status_raw)
 
 
 # ============================================================
@@ -622,23 +642,20 @@ def inserir_banco():
                 continue
             
             # Mapeia campos principais procurando recursivamente ou usando defaults
-            nome = buscar_valor('nome', inst) or buscar_valor('instrumento', inst) or buscar_valor('titulo', inst) or 'n/i'
-            fabricante = buscar_valor('fabricante', inst) or 'n/i'
-            modelo = buscar_valor('modelo', inst) or 'n/i'
-            numero_serie = buscar_valor('numero_serie', inst) or buscar_valor('serie', inst) or 'n/i'
+            # Campos que nao podem ser NULL recebem 'N/I' (Nao Informado)
+            nome = buscar_valor('nome', inst) or buscar_valor('instrumento', inst) or buscar_valor('titulo', inst) or 'N/I'
+            fabricante = buscar_valor('fabricante', inst) or 'N/I'
+            modelo = buscar_valor('modelo', inst) or 'N/I'
+            numero_serie = buscar_valor('numero_serie', inst) or buscar_valor('serie', inst) or 'N/I'
             descricao = buscar_valor('descricao', inst) or json.dumps(inst, ensure_ascii=False)[:500]
             periodicidade = buscar_valor('periodicidade', inst, 12)
-            departamento = buscar_valor('departamento', inst) or buscar_valor('cliente', inst) or buscar_valor('localizacao', inst) or 'n/i'
-            responsavel = buscar_valor('responsavel', inst) or buscar_valor('solicitante', inst) or 'n/i'
-            
-            # Normaliza Status
-            status_bruto = buscar_valor('status', inst, 'Sem Calibracao')
-            status = normalizar_status(status_bruto)
-            
-            tipo_familia = buscar_valor('tipo_familia', inst) or buscar_valor('tipo_documento', inst) or 'n/i'
-            serie_desenv = buscar_valor('serie_desenv', inst) or buscar_valor('desenho', inst) or 'n/i'
-            criticidade = buscar_valor('criticidade', inst) or 'B' # Default B = Baixa/Normal
-            motivo_calibracao = buscar_valor('motivo_calibracao', inst, 'Calibracao Periodica')
+            departamento = buscar_valor('departamento', inst) or buscar_valor('cliente', inst) or buscar_valor('localizacao', inst) or 'N/I'
+            responsavel = buscar_valor('responsavel', inst) or buscar_valor('solicitante', inst) or 'N/I'
+            status = normalizar_status(buscar_valor('status', inst, 'Sem Calibração'))
+            tipo_familia = buscar_valor('tipo_familia', inst) or buscar_valor('tipo_documento', inst) or 'N/I'
+            serie_desenv = buscar_valor('serie_desenv', inst) or buscar_valor('desenho', inst) or 'N/I'
+            criticidade = buscar_valor('criticidade', inst) or 'N/I'
+            motivo_calibracao = buscar_valor('motivo_calibracao', inst, 'Calibração Periódica') or 'Calibração Periódica'
             # quantidade = buscar_valor('quantidade', inst, 1)
 
             sql = """
@@ -897,11 +914,11 @@ def gerar_sql():
             val_period = escape(inst.get('periodicidade', 12))
             val_dep = escape(inst.get('departamento') or dados_principais.get('cliente'))
             val_resp = escape(inst.get('responsavel') or dados_principais.get('solicitante'))
-            val_status = escape(inst.get('status', 'Sem Calibracao'))
+            val_status = escape(inst.get('status', 'Sem Calibração'))
             val_tipo = escape(inst.get('tipo_familia') or inst.get('tipo_documento'))
             val_serie = escape(inst.get('serie_desenv'))
             val_crit = escape(inst.get('criticidade'))
-            val_motivo = escape(inst.get('motivo_calibracao', 'Calibracao Periodica'))
+            val_motivo = escape(inst.get('motivo_calibracao', 'Calibração Periódica'))
             val_qtd = escape(inst.get('quantidade', 1))
             val_uid = escape(user_id)
 

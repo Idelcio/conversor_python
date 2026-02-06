@@ -41,7 +41,7 @@ def criar_tabelas():
                 periodicidade INT DEFAULT 12,
                 departamento VARCHAR(255),
                 responsavel VARCHAR(255),
-                status VARCHAR(50) DEFAULT 'Sem Calibracao',
+                status VARCHAR(50) DEFAULT 'Sem Calibração',
                 tipo_familia VARCHAR(255),
                 serie_desenv VARCHAR(255),
                 criticidade VARCHAR(100),

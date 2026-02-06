@@ -808,9 +808,9 @@ function renderEditableJSON(data) {
     let html = '<div class="json-editor-container">';
 
     // Header
-    html += '<div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">';
-    html += '<div><strong style="color: var(--accent-primary);">📝 Editor de Dados</strong><span style="margin-left: 12px; font-size: 12px; color: var(--text-secondary);">Clique nos valores para editar</span></div>';
-    html += '<div><button onclick="saveAllEdits()" style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">Salvar Edições</button></div>';
+    html += '<div style="margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">';
+    html += '<div><strong style="color: var(--accent-primary); font-size: 12px;">📝 Editor de Dados</strong><span style="margin-left: 8px; font-size: 10px; color: var(--text-secondary);">Clique nos valores para editar</span></div>';
+    html += '<div><button onclick="saveAllEdits()" style="padding: 4px 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Salvar Edições</button></div>';
     html += '</div>';
 
     // Conteudo: Cards para cada instrumento
@@ -827,16 +827,16 @@ function renderEditableJSON(data) {
             const subtitulo = inst.arquivo_origem || '';
             const icon = inst.nome && inst.nome.toLowerCase().includes('paquimetro') ? '📏' : '🔬';
 
-            html += `<div class="instrument-card" style="border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 16px; background: #fff; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">`;
+            html += `<div class="instrument-card" style="border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 10px; background: #fff; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">`;
 
             // Header do Card
-            html += `<div class="card-header" style="background: #f8f9fa; padding: 12px 16px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="document.getElementById('body-${idx}').classList.toggle('hidden-card')">`;
-            html += `<div><strong style="font-size:14px; color:#333;">${icon} ${titulo}</strong><div style="font-size:11px; color:#888;">${subtitulo}</div></div>`;
-            html += `<span style="font-size: 12px; color: #666;">Show/Hide ▼</span>`;
+            html += `<div class="card-header" style="background: #f8f9fa; padding: 8px 12px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="document.getElementById('body-${idx}').classList.toggle('hidden-card')">`;
+            html += `<div><strong style="font-size:12px; color:#333;">${icon} ${titulo}</strong><div style="font-size:10px; color:#888;">${subtitulo}</div></div>`;
+            html += `<span style="font-size: 10px; color: #666;">Show/Hide ▼</span>`;
             html += `</div>`;
 
             // Corpo do Card
-            html += `<div id="body-${idx}" class="card-body" style="padding: 15px;">`;
+            html += `<div id="body-${idx}" class="card-body" style="padding: 10px;">`;
             html += '<div class="json-object">';
 
             // Renderiza campos ordenados
@@ -874,8 +874,8 @@ function renderEditableJSON(data) {
     }
 
     // Footer
-    html += '<div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">';
-    html += '<button onclick="saveAllEdits()" style="padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;">Salvar Edições</button>';
+    html += '<div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">';
+    html += '<button onclick="saveAllEdits()" style="padding: 4px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500;">Salvar Edições</button>';
     html += '</div>';
     html += '</div>';
     return html;
@@ -1140,22 +1140,22 @@ if (window.innerWidth <= 480) {
 // ==========================================
 const styleJSON = document.createElement('style');
 styleJSON.innerHTML = `
-    .json-editor-container { font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.6; color: #444; }
-    .instrument-cards { display: flex; flex-direction: column; gap: 16px; }
-    .instrument-card { border: 1px solid #e0e0e0; border-radius: 8px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden; }
-    .card-header { background: #f8f9fa; padding: 12px 16px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
+    .json-editor-container { font-family: 'Consolas', 'Monaco', monospace; font-size: 11px; line-height: 1.4; color: #444; }
+    .instrument-cards { display: flex; flex-direction: column; gap: 10px; }
+    .instrument-card { border: 1px solid #e0e0e0; border-radius: 6px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05); overflow: hidden; }
+    .card-header { background: #f8f9fa; padding: 8px 12px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
     .card-header:hover { background: #f1f3f4; }
-    .card-body { padding: 16px; display: block; }
-    .json-object { margin-left: 20px; border-left: 1px solid #eee; padding-left: 8px; }
-    .json-line { display: flex; align-items: center; margin-bottom: 6px; }
-    .json-key { color: #880088; font-weight: 600; margin-right: 8px; white-space: nowrap; }
+    .card-body { padding: 10px; display: block; }
+    .json-object { margin-left: 10px; border-left: 1px solid #eee; padding-left: 6px; }
+    .json-line { display: flex; align-items: center; margin-bottom: 3px; }
+    .json-key { color: #880088; font-weight: 600; margin-right: 4px; white-space: nowrap; font-size: 11px; }
     .json-string { color: #2a8b3c; }
     .json-number { color: #d32f2f; }
     .json-boolean { color: #0000ff; font-weight: bold; }
     .json-null { color: #888; font-style: italic; }
-    .json-input { border: 1px solid #ddd; border-radius: 4px; padding: 4px 8px; font-family: inherit; font-size: inherit; color: inherit; background: #fafafa; width: 100%; max-width: 250px; transition: all 0.2s; }
+    .json-input { border: 1px solid #ddd; border-radius: 3px; padding: 2px 5px; font-family: inherit; font-size: 11px; color: inherit; background: #fafafa; width: 100%; max-width: 180px; transition: all 0.2s; }
     .json-input:focus { border-color: #2196F3; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.1); }
-    .collapse-btn { background: none; border: none; color: #888; cursor: pointer; font-size: 10px; width: 20px; padding: 0; margin-right: 4px; }
+    .collapse-btn { background: none; border: none; color: #888; cursor: pointer; font-size: 9px; width: 16px; padding: 0; margin-right: 2px; }
 
     /* Overrides de Layout do Chat (Compacto) */
     .message-content { font-size: 13px !important; padding: 8px 12px !important; }
