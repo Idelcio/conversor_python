@@ -120,6 +120,7 @@ const attachBtn = document.getElementById('attachBtn');
 
 // Contexto do PDF da pagina pai
 let contextPdfUrl = null;
+let lastPdfFile = null; // Guarda referencia ao ultimo PDF para criacao de calibracao
 
 window.addEventListener('message', (e) => {
     // Recebe URL do PDF detectado pelo widget
@@ -132,6 +133,16 @@ window.addEventListener('message', (e) => {
         if (chatInput.placeholder.indexOf('📄') === -1) {
             chatInput.placeholder = "📄 PDF de contexto detectado. Digite para analisar...";
         }
+    }
+});
+
+// Listener para resposta de criacao de calibracao (vindo do widget_loader)
+window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'calibracao_created') {
+        addBotMessage('✅ Calibracao criada no Gocal com sucesso! ' + (e.data.message || ''));
+    }
+    if (e.data && e.data.type === 'calibracao_error') {
+        addBotMessage('❌ Erro ao criar calibracao no Gocal: ' + (e.data.message || 'Erro desconhecido'));
     }
 });
 
@@ -371,6 +382,9 @@ async function sendMessage() {
             const formData = new FormData();
 
             // 1. Adiciona arquivos fisicos (Upload Manual)
+            if (uploadedFiles.length > 0) {
+                lastPdfFile = uploadedFiles[0]; // Guarda para calibracao
+            }
             uploadedFiles.forEach(file => {
                 formData.append('pdfs', file);
             });
@@ -382,6 +396,7 @@ async function sendMessage() {
                     // Pede ao pai o conteudo fisico (bypass CORS)
                     const pdfBlob = await getPdfContentFromParent();
                     const pdfFile = new File([pdfBlob], "documento_tela.pdf", { type: "application/pdf" });
+                    lastPdfFile = pdfFile; // Guarda para calibracao
 
                     // Anexa como se fosse um arquivo normal
                     formData.append('pdfs', pdfFile);
@@ -811,6 +826,25 @@ async function insertarNoBanco() {
 
         if (data.success) {
             addBotMessage(`✅ ${data.message}`);
+
+            // AUTO: Criar calibracao no Gocal se tiver instrumentos inseridos e PDF
+            if (data.instrumentos_inseridos && data.instrumentos_inseridos.length > 0 && lastPdfFile) {
+                addBotMessage('📋 Criando calibracao no Gocal...');
+                try {
+                    const buffer = await lastPdfFile.arrayBuffer();
+                    window.parent.postMessage({
+                        type: 'create_calibracao',
+                        instrumentos: data.instrumentos_inseridos,
+                        pdfBuffer: buffer,
+                        pdfName: lastPdfFile.name || 'certificado.pdf'
+                    }, '*', [buffer]);
+                } catch (err) {
+                    console.error('Erro ao enviar PDF para calibracao:', err);
+                    addBotMessage('⚠️ Instrumento inserido, mas nao foi possivel criar a calibracao automaticamente.');
+                }
+            } else if (data.instrumentos_inseridos && data.instrumentos_inseridos.length > 0) {
+                addBotMessage('⚠️ Instrumento inserido, mas sem PDF disponivel para criar calibracao.');
+            }
         } else {
             addBotMessage(`❌ Erro ao inserir: ${data.message}`);
         }

@@ -230,6 +230,10 @@
         if (e.data && e.data.type === 'fill_checklist' && e.data.data) {
             fillChecklistForm(e.data.data);
         }
+        // Novo: Chat pedindo para criar calibracao no Gocal
+        if (e.data && e.data.type === 'create_calibracao') {
+            criarCalibracaoNoGocal(e.data);
+        }
     });
 
     // Funcao auxiliar para preencher o formulario na pagina pai
@@ -266,6 +270,87 @@
         }
 
         alert("✅ Checklist preenchido automaticamente pelo Metron!");
+    }
+
+    // Funcao para criar calibracao no Gocal via POST (como se fosse o humano)
+    async function criarCalibracaoNoGocal(data) {
+        const iframe = document.getElementById('metron-iframe');
+
+        try {
+            // 1. Pega CSRF token da pagina Gocal
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+            if (!csrfToken) {
+                console.error('[Metron] CSRF token nao encontrado na pagina!');
+                if (iframe) iframe.contentWindow.postMessage({ type: 'calibracao_error', message: 'CSRF token nao encontrado. Voce esta logado no Gocal?' }, '*');
+                return;
+            }
+
+            // 2. Reconstroi o PDF a partir do ArrayBuffer
+            let pdfFile = null;
+            if (data.pdfBuffer) {
+                const blob = new Blob([data.pdfBuffer], { type: 'application/pdf' });
+                pdfFile = new File([blob], data.pdfName || 'certificado.pdf', { type: 'application/pdf' });
+            }
+
+            if (!pdfFile) {
+                if (iframe) iframe.contentWindow.postMessage({ type: 'calibracao_error', message: 'PDF nao disponivel para upload.' }, '*');
+                return;
+            }
+
+            const instrumentos = data.instrumentos || [];
+            let totalCriados = 0;
+            let erros = [];
+
+            for (const inst of instrumentos) {
+                // 3. Monta FormData identico ao formulario do Gocal
+                const formData = new FormData();
+                formData.append('_token', csrfToken);
+                formData.append('instrumento_id', inst.instrumento_id);
+                formData.append('numero_calibracao', inst.numero_calibracao || 'SN');
+                formData.append('data_calibracao', inst.data_calibracao || new Date().toISOString().split('T')[0]);
+                formData.append('laboratorio_responsavel', inst.laboratorio_responsavel || '');
+                // Mantem acentos igual ao fluxo de instrumentos
+                formData.append('motivo_calibracao', inst.motivo_calibracao || 'Calibração Periódica');
+                formData.append('resultado_calibracao', 'Pendente Aprovação');
+                formData.append('certificado_pdf', pdfFile);
+                formData.append('acao', 'salvar');
+
+                // 4. POST ao Gocal (usa sessao do usuario autenticado)
+                console.log('[Metron] Criando calibracao para instrumento ID:', inst.instrumento_id);
+                const resp = await fetch('/calibracoes', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'same-origin',
+                    redirect: 'follow'
+                });
+
+                if (resp.ok || resp.redirected) {
+                    totalCriados++;
+                    console.log('[Metron] Calibracao criada com sucesso!');
+                } else {
+                    const errText = await resp.text().catch(() => 'Erro desconhecido');
+                    console.error('[Metron] Erro ao criar calibracao:', resp.status, errText);
+                    erros.push(`Instrumento ${inst.instrumento_id}: HTTP ${resp.status}`);
+                }
+            }
+
+            // 5. Reporta resultado ao chat
+            if (totalCriados > 0 && iframe) {
+                iframe.contentWindow.postMessage({
+                    type: 'calibracao_created',
+                    message: totalCriados + ' calibracao(oes) criada(s).' + (erros.length > 0 ? ' Erros: ' + erros.join(', ') : '')
+                }, '*');
+            } else if (iframe) {
+                iframe.contentWindow.postMessage({
+                    type: 'calibracao_error',
+                    message: erros.join(', ') || 'Nenhuma calibracao criada.'
+                }, '*');
+            }
+
+        } catch (err) {
+            console.error('[Metron] Erro geral ao criar calibracao:', err);
+            if (iframe) iframe.contentWindow.postMessage({ type: 'calibracao_error', message: err.toString() }, '*');
+        }
     }
 
     // Polling removido

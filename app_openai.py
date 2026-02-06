@@ -603,6 +603,7 @@ def inserir_banco():
         total_inseridos = 0
         total_ignorados = 0
         total_grandezas = 0
+        instrumentos_inseridos = []  # Para retornar IDs e dados de calibracao
 
         for inst in instrumentos:
             if isinstance(inst, str):
@@ -678,6 +679,19 @@ def inserir_banco():
             instrumento_id = cursor.lastrowid
             total_inseridos += 1
 
+            # Coleta dados para criacao automatica de calibracao no Gocal
+            data_calib = buscar_valor('data_calibracao', inst)
+            numero_cert = buscar_valor('numero_certificado', inst) or identificacao
+            laboratorio = buscar_valor('laboratorio', inst) or buscar_valor('laboratorio_responsavel', inst) or 'N/I'
+
+            instrumentos_inseridos.append({
+                'instrumento_id': instrumento_id,
+                'numero_calibracao': numero_cert,
+                'data_calibracao': data_calib,
+                'laboratorio_responsavel': laboratorio,
+                'motivo_calibracao': motivo_calibracao
+            })
+
             # Busca grandezas (Simplificado como solicitado)
             # Tenta pegar direto da chave 'grandezas' ou 'tabelas'
             lista_grandezas = buscar_valor('grandezas', inst) or buscar_valor('tabelas', inst) or []
@@ -746,7 +760,8 @@ def inserir_banco():
             'message': msg,
             'inseridos': total_inseridos,
             'ignorados': total_ignorados,
-            'grandezas': total_grandezas
+            'grandezas': total_grandezas,
+            'instrumentos_inseridos': instrumentos_inseridos
         })
 
     except mysql.connector.Error as e:
