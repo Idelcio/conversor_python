@@ -1,12 +1,73 @@
 let uploadedFiles = [];
 let extractedData = null;
 let currentUserId = new URLSearchParams(window.location.search).get('user_id') || null;
+let currentPageContext = null;
+
+// Mapa de rotas amigaveis do Gocal
+function getPageLabel(path) {
+    if (!path) return null;
+
+    const routes = [
+        { pattern: /\/instrumentos\/create/, label: 'Novo Instrumento' },
+        { pattern: /\/instrumentos\/(\d+)\/edit/, label: 'Editando Instrumento #$1' },
+        { pattern: /\/instrumentos\/(\d+)/, label: 'Instrumento #$1' },
+        { pattern: /\/instrumentos/, label: 'Lista de Instrumentos' },
+        { pattern: /\/calibracoes\/(\d+)\/aprovar/, label: 'Aprovando Calibracao #$1' },
+        { pattern: /\/calibracoes\/(\d+)\/edit/, label: 'Editando Calibracao #$1' },
+        { pattern: /\/calibracoes\/create/, label: 'Nova Calibracao' },
+        { pattern: /\/calibracoes\/(\d+)/, label: 'Calibracao #$1' },
+        { pattern: /\/calibracoes/, label: 'Lista de Calibracoes' },
+        { pattern: /\/dashboard/, label: 'Dashboard' },
+        { pattern: /\/usuarios/, label: 'Usuarios' },
+        { pattern: /\/relatorios/, label: 'Relatorios' },
+    ];
+
+    for (const route of routes) {
+        const match = path.match(route.pattern);
+        if (match) {
+            let label = route.label;
+            // Substitui $1, $2, etc. pelos grupos capturados
+            for (let i = 1; i < match.length; i++) {
+                label = label.replace('$' + i, match[i]);
+            }
+            return label;
+        }
+    }
+
+    // Fallback: pega a ultima parte da rota
+    const parts = path.split('/').filter(Boolean);
+    return parts.length > 0 ? parts.join(' / ') : null;
+}
+
+function updatePageIndicator(path) {
+    const indicator = document.getElementById('pageIndicator');
+    if (!indicator) return;
+
+    const label = getPageLabel(path);
+    if (label) {
+        indicator.textContent = label;
+        indicator.title = path;
+        indicator.style.display = 'inline-block';
+    } else {
+        indicator.style.display = 'none';
+    }
+}
 
 // Escuta mensagem do Pai (Widget Loader) com o contexto do usuario
 window.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'set_user_ctx') {
         currentUserId = event.data.user_id;
         console.log("[Chat] Contexto de usuario recebido:", currentUserId);
+    }
+
+    if (event.data && event.data.type === 'set_page_context') {
+        currentPageContext = {
+            path: event.data.path,
+            url: event.data.url,
+            title: event.data.title
+        };
+        console.log("[Chat] Pagina atual:", currentPageContext.path);
+        updatePageIndicator(currentPageContext.path);
     }
 });
 

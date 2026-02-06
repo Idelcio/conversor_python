@@ -272,6 +272,19 @@
     // setInterval(scanForPDFs, 3000);
 
     // Tenta escanear assim que o iframe carregar
+    // Envia a rota atual da pagina pai para o iframe do chat
+    function sendPageContext() {
+        const iframe = document.getElementById('metron-iframe');
+        if (!iframe || !iframe.contentWindow) return;
+
+        iframe.contentWindow.postMessage({
+            type: 'set_page_context',
+            path: window.location.pathname,
+            url: window.location.href,
+            title: document.title
+        }, '*');
+    }
+
     btn.onclick = () => {
         const isOpen = frameContainer.classList.contains('open');
 
@@ -283,16 +296,30 @@
                 iframe.id = 'metron-iframe';
                 iframe.src = FULL_URL;
                 iframe.onload = () => {
-                    setTimeout(() => scanForPDFs(false), 1000); // Espera 1s para garantir
+                    setTimeout(() => {
+                        scanForPDFs(false);
+                        sendPageContext();
+                    }, 1000);
                 };
                 frameContainer.appendChild(iframe);
                 iframeLoaded = true;
+            } else {
+                // Sempre atualiza o contexto ao reabrir
+                sendPageContext();
             }
             frameContainer.classList.add('open');
             // Se ja estava carregado, escaneia agora
             if (iframeLoaded) scanForPDFs(false);
         }
     };
+
+    // Detecta navegacao SPA (pushState/popState) para atualizar contexto
+    const _origPushState = history.pushState;
+    history.pushState = function () {
+        _origPushState.apply(this, arguments);
+        setTimeout(sendPageContext, 300);
+    };
+    window.addEventListener('popstate', () => setTimeout(sendPageContext, 300));
 
     container.appendChild(frameContainer);
     container.appendChild(btn);

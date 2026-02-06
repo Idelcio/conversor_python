@@ -91,6 +91,22 @@ body {
     font-size: 12px;
     color: var(--text-tertiary);
     margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.page-indicator {
+    background: var(--accent-primary);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .header-right {
