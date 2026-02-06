@@ -68,8 +68,44 @@ window.addEventListener('message', (event) => {
         };
         console.log("[Chat] Pagina atual:", currentPageContext.path);
         updatePageIndicator(currentPageContext.path);
+
+        // Auto-checklist na rota de aprovacao
+        if (/\/calibracoes\/\d+\/aprovar/.test(currentPageContext.path)) {
+            autoChecklistAprovar();
+        }
     }
 });
+
+// Auto-checklist: detecta rota de aprovacao e sugere o comando
+let autoChecklistTriggered = false;
+function autoChecklistAprovar() {
+    if (autoChecklistTriggered) return;
+    autoChecklistTriggered = true;
+
+    // Espera o PDF de contexto aparecer (max 8s)
+    let attempts = 0;
+    const waitForPdf = setInterval(() => {
+        attempts++;
+        if (contextPdfUrl) {
+            clearInterval(waitForPdf);
+            addBotMessage(
+                'Voce esta na tela de <strong>aprovacao</strong> e detectei o PDF do certificado.' +
+                '<br><br>Digite <strong>"preencher checklist"</strong> ou clique abaixo:' +
+                '<br><br><button onclick="executarChecklist()" style="padding:8px 16px; background:#4CAF50; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:500;">Preencher Checklist</button>'
+            );
+        } else if (attempts >= 16) {
+            clearInterval(waitForPdf);
+            addBotMessage('Voce esta na tela de aprovacao, mas nao encontrei um PDF nesta pagina. Anexe manualmente se necessario.');
+            autoChecklistTriggered = false;
+        }
+    }, 500);
+}
+
+function executarChecklist() {
+    chatInput.value = 'preencher checklist';
+    sendMessage();
+}
+window.executarChecklist = executarChecklist;
 
 const uploadBox = document.getElementById('uploadBox');
 const fileInput = document.getElementById('fileInput');
@@ -473,7 +509,8 @@ function pollProgress(taskId) {
                         uploadedFiles = [];
                         contextPdfUrl = null;
                         chatInput.placeholder = "Digite ou arraste um PDF...";
-                        document.getElementById('filesList').style.display = 'none';
+                        const fl = document.getElementById('filesList');
+                        if (fl) fl.style.display = 'none';
 
                         return; // Para por aqui
                     }

@@ -85,13 +85,56 @@ class OpenAIExtractor:
         
         print(f"[IA] Enviando para Gocal IA...")
         
-        # Monta prompt - Lógica Hibrida (Conversa vs JSON vs Resumo)
+        # Monta prompt - Lógica Hibrida (Conversa vs JSON vs Resumo vs Checklist)
         # Palavras-chave RESTRITIVAS para evitar ativar JSON enquanto conversa sobre tabelas
         keywords_json = ['json', 'banco de dados', 'sql', 'estruturar para banco', 'xml', 'planilha excel']
-        
+        keywords_checklist = ['checklist', 'preencher check', 'verificar check', 'conferir check']
+
         is_extraction_request = user_prompt and any(k in user_prompt.lower() for k in keywords_json)
-        
-        if is_extraction_request:
+        is_checklist_request = user_prompt and any(k in user_prompt.lower() for k in keywords_checklist)
+
+        if is_checklist_request:
+            # Modo Checklist: Analisa PDF e retorna JSON com true/false por item
+            final_text_prompt = """Analise as imagens deste certificado de calibracao e verifique CADA item do checklist abaixo.
+Para cada item, retorne true se o certificado ATENDE ao criterio, ou false se NAO atende ou a informacao nao esta presente.
+
+RETORNE APENAS o JSON abaixo (sem markdown, sem texto extra):
+{
+    "checklist_data": {
+        "1": true ou false,
+        "2": true ou false,
+        "3": true ou false,
+        "4": true ou false,
+        "5": true ou false,
+        "6": true ou false,
+        "7": true ou false,
+        "8": true ou false,
+        "9": true ou false,
+        "10": true ou false,
+        "11": true ou false,
+        "12": true ou false
+    },
+    "message": "Resumo da analise explicando o que foi encontrado e o que faltou"
+}
+
+CRITERIOS DE CADA ITEM:
+1. Identificacao do Laboratorio: O laboratorio e acreditado (RBC/INMETRO ou equivalente)?
+2. Identificacao do Instrumento: O certificado contem tipo, marca, modelo, numero de serie, faixa de medicao e resolucao?
+3. Local e Cliente: Ha identificacao do cliente e local da calibracao (in loco ou em laboratorio)?
+4. Numero e Data do Certificado: O certificado tem numero unico e data de emissao?
+5. Etiqueta/Selo: Menciona selo de calibracao ou validade?
+6. Datas: A data de emissao e no maximo 7 dias apos a data de calibracao?
+7. Frequencia: A periodicidade/frequencia de calibracao esta definida?
+8. Condicoes Ambientais: Temperatura e umidade estao informadas?
+9. Procedimento: O metodo/procedimento de calibracao esta citado?
+10. Padroes: A rastreabilidade dos padroes esta citada?
+11. Assinatura: Tem assinatura do responsavel tecnico?
+12. Integridade: O instrumento esta em boas condicoes de uso?
+
+IMPORTANTE: Retorne APENAS o JSON. Marque false quando a informacao NAO estiver presente no documento."""
+            print("[IA] Modo CHECKLIST ativado!")
+
+        elif is_extraction_request:
             # Modo 1: Extração JSON (Explícito)
             final_text_prompt = JSON_SCHEMA_PROMPT
             print("[IA] Modo Extracao JSON ativado!")
@@ -128,12 +171,7 @@ class OpenAIExtractor:
                 }
             ]
             
-            # Converte PDF para imagens
-            images = self.pdf_to_images(pdf_path)
-            
-            # ... (código intermediário omitido, use o contexto correto ao aplicar) ...
-
-            # Adiciona imagens
+            # Adiciona imagens (usa a lista já convertida acima)
             for img_base64 in images:
                 messages[1]["content"].append({
                     "type": "image_url",

@@ -237,7 +237,7 @@
         if (!data) return;
 
         // Verifica se estamos numa pagina de calibração/edição antes de tentar preencher
-        const isCalibrationPage = /calibracao|edit|create/.test(window.location.href);
+        const isCalibrationPage = /calibracoes|calibracao|aprovar|edit|create/.test(window.location.href);
 
         if (!isCalibrationPage) {
             console.log('[Metron] Checklist recebido, mas não estamos na tela de calibração. Ignorando preenchimento visual.');
