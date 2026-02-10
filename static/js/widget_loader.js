@@ -170,8 +170,9 @@
 
             if (match && match[1]) {
                 const id = match[1];
-                foundPdfUrl = window.location.origin + `/calibracoes/visualizar-pdf/${id}`;
-                // console.log("[Metron] URL INFERIDA:", foundPdfUrl);
+                // Busca PDF pelo Metron (Flask) que acessa o banco direto
+                foundPdfUrl = CHAT_URL + `/certificado-pdf/${id}`;
+                console.log("[Metron] URL do PDF via Metron:", foundPdfUrl);
             }
         }
 
@@ -183,9 +184,21 @@
             if (returnContent && iframe && iframe.contentWindow) {
                 console.log("[Metron] Baixando conteudo do PDF para o chat...", foundPdfUrl);
                 fetch(foundPdfUrl)
-                    .then(r => r.arrayBuffer())
+                    .then(r => {
+                        if (!r.ok) {
+                            throw new Error(`HTTP ${r.status}: PDF nao encontrado em ${foundPdfUrl}`);
+                        }
+                        const contentType = r.headers.get('content-type') || '';
+                        if (!contentType.includes('pdf') && !contentType.includes('octet-stream')) {
+                            console.warn("[Metron] Content-Type inesperado:", contentType);
+                        }
+                        return r.arrayBuffer();
+                    })
                     .then(buffer => {
-                        console.log("[Metron] Download OK! Enviando bytes...");
+                        if (buffer.byteLength < 100) {
+                            throw new Error("PDF vazio ou muito pequeno (" + buffer.byteLength + " bytes)");
+                        }
+                        console.log("[Metron] Download OK! Enviando", buffer.byteLength, "bytes...");
                         iframe.contentWindow.postMessage({
                             type: 'context-pdf-blob',
                             buffer: buffer,
@@ -302,21 +315,32 @@
             let erros = [];
 
             for (const inst of instrumentos) {
+                // Valida data_calibracao antes de enviar
+                let dataCalib = inst.data_calibracao;
+                if (!dataCalib || dataCalib === 'n/i' || dataCalib === 'N/I') {
+                    dataCalib = new Date().toISOString().split('T')[0];
+                    console.warn('[Metron] data_calibracao ausente, usando data de hoje:', dataCalib);
+                }
+                // Converte DD/MM/YYYY para YYYY-MM-DD se necessario
+                const brMatch = String(dataCalib).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                if (brMatch) {
+                    dataCalib = brMatch[3] + '-' + brMatch[2] + '-' + brMatch[1];
+                }
+
                 // 3. Monta FormData identico ao formulario do Gocal
                 const formData = new FormData();
                 formData.append('_token', csrfToken);
                 formData.append('instrumento_id', inst.instrumento_id);
                 formData.append('numero_calibracao', inst.numero_calibracao || 'SN');
-                formData.append('data_calibracao', inst.data_calibracao || new Date().toISOString().split('T')[0]);
+                formData.append('data_calibracao', dataCalib);
                 formData.append('laboratorio_responsavel', inst.laboratorio_responsavel || '');
-                // Mantem acentos igual ao fluxo de instrumentos
                 formData.append('motivo_calibracao', inst.motivo_calibracao || 'Calibração Periódica');
                 formData.append('resultado_calibracao', 'Pendente Aprovação');
                 formData.append('certificado_pdf', pdfFile);
                 formData.append('acao', 'salvar');
 
                 // 4. POST ao Gocal (usa sessao do usuario autenticado)
-                console.log('[Metron] Criando calibracao para instrumento ID:', inst.instrumento_id);
+                console.log('[Metron] Criando calibracao para instrumento ID:', inst.instrumento_id, 'data:', dataCalib);
                 const resp = await fetch('/calibracoes', {
                     method: 'POST',
                     body: formData,
@@ -324,12 +348,31 @@
                     redirect: 'follow'
                 });
 
+                // Laravel redireciona apos store com sucesso
+                // Com redirect:'follow', resp.ok=true e resp.redirected=true
                 if (resp.ok || resp.redirected) {
                     totalCriados++;
                     console.log('[Metron] Calibracao criada com sucesso!');
+                } else if (resp.status === 422) {
+                    // Erro de validacao do Laravel
+                    let errDetail = 'Validacao falhou';
+                    try {
+                        const errBody = await resp.text();
+                        // Tenta extrair mensagens de erro do HTML do Laravel
+                        const match = errBody.match(/class="invalid-feedback[^"]*"[^>]*>([^<]+)/g);
+                        if (match) {
+                            errDetail = match.map(m => m.replace(/.*>/, '')).join(', ');
+                        }
+                    } catch(e) {}
+                    console.error('[Metron] Erro validacao:', resp.status, errDetail);
+                    erros.push(`Instrumento ${inst.instrumento_id}: ${errDetail}`);
+                } else if (resp.status === 419) {
+                    console.error('[Metron] CSRF token expirado/invalido');
+                    erros.push(`Instrumento ${inst.instrumento_id}: Token CSRF expirado. Recarregue a pagina do Gocal.`);
+                    break; // Nao adianta continuar com token invalido
                 } else {
                     const errText = await resp.text().catch(() => 'Erro desconhecido');
-                    console.error('[Metron] Erro ao criar calibracao:', resp.status, errText);
+                    console.error('[Metron] Erro ao criar calibracao:', resp.status, errText.substring(0, 200));
                     erros.push(`Instrumento ${inst.instrumento_id}: HTTP ${resp.status}`);
                 }
             }

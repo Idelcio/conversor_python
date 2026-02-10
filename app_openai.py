@@ -7,7 +7,7 @@ Funcionalidades:
 - Visualizacao do banco
 """
 
-from flask import Flask, render_template, request, jsonify, session, Response
+from flask import Flask, render_template, request, jsonify, session, Response, send_file
 from flask_cors import CORS
 import os
 import tempfile
@@ -679,13 +679,41 @@ def inserir_banco():
             instrumento_id = cursor.lastrowid
             total_inseridos += 1
 
-            # Coleta dados para criacao automatica de calibracao no Gocal
+            # Cria calibracao automaticamente
             data_calib = buscar_valor('data_calibracao', inst)
+            data_emissao = buscar_valor('data_emissao', inst)
             numero_cert = buscar_valor('numero_certificado', inst) or identificacao
             laboratorio = buscar_valor('laboratorio', inst) or buscar_valor('laboratorio_responsavel', inst) or 'N/I'
+            validade = buscar_valor('validade', inst) or buscar_valor('data_proxima_calibracao', inst)
+
+            try:
+                sql_cal = """
+                    INSERT INTO calibracoes (
+                        user_id, responsavel_cadastro_id, instrumento_id,
+                        numero_calibracao, sufixo,
+                        laboratorio_responsavel, motivo_calibracao,
+                        data_calibracao, data_proxima_calibracao,
+                        status_calibracao, status_instrumento,
+                        created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                """
+                valores_cal = (
+                    user_id, user_id, instrumento_id,
+                    numero_cert, '',
+                    laboratorio, motivo_calibracao,
+                    data_calib, validade,
+                    'Pendente Aprovação', status
+                )
+                cursor.execute(sql_cal, valores_cal)
+                calibracao_id = cursor.lastrowid
+                print(f"[DB] Calibracao #{calibracao_id} criada para instrumento #{instrumento_id}")
+            except Exception as e_cal:
+                calibracao_id = None
+                print(f"[AVISO] Erro ao criar calibracao para instrumento #{instrumento_id}: {e_cal}")
 
             instrumentos_inseridos.append({
                 'instrumento_id': instrumento_id,
+                'calibracao_id': calibracao_id,
                 'numero_calibracao': numero_cert,
                 'data_calibracao': data_calib,
                 'laboratorio_responsavel': laboratorio,
@@ -997,6 +1025,50 @@ INSERT INTO instrumentos (
 # ============================================================
 # ROTAS - UTILIDADES
 # ============================================================
+
+@app.route('/certificado-pdf/<int:calibracao_id>')
+def servir_certificado_pdf(calibracao_id):
+    """Serve o PDF do certificado direto do banco de dados pelo ID da calibracao"""
+    import base64
+    import io
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor(dictionary=True)
+
+        # Busca na tabela certificados (que tem o PDF in database)
+        cursor.execute(
+            'SELECT pdf_content, pdf_in_database, nome_original, arquivo_pdf FROM certificados WHERE calibracao_id = %s ORDER BY id DESC LIMIT 1',
+            (calibracao_id,)
+        )
+        cert = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if not cert:
+            return jsonify({'error': 'Certificado nao encontrado'}), 404
+
+        # Se o PDF esta no banco (base64)
+        if cert['pdf_in_database'] and cert['pdf_content']:
+            pdf_bytes = base64.b64decode(cert['pdf_content'])
+            return send_file(
+                io.BytesIO(pdf_bytes),
+                mimetype='application/pdf',
+                download_name=cert['nome_original'] or 'certificado.pdf'
+            )
+
+        # Se tem caminho de arquivo (storage do Laravel)
+        if cert['arquivo_pdf']:
+            # Tenta no storage do Laravel
+            laravel_storage = os.path.join(os.getenv('LARAVEL_STORAGE', 'C:/xampp/htdocs/gocal/storage/app/public'), cert['arquivo_pdf'])
+            if os.path.exists(laravel_storage):
+                return send_file(laravel_storage, mimetype='application/pdf')
+
+        return jsonify({'error': 'PDF nao disponivel'}), 404
+
+    except Exception as e:
+        print(f"[ERRO] Servir PDF: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/health')
 def health():
     """Health check"""

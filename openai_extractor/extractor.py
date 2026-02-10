@@ -95,29 +95,32 @@ class OpenAIExtractor:
 
         if is_checklist_request:
             # Modo Checklist: Analisa PDF e retorna JSON com true/false por item
-            final_text_prompt = """Analise as imagens deste certificado de calibracao e verifique CADA item do checklist abaixo.
-Para cada item, retorne true se o certificado ATENDE ao criterio, ou false se NAO atende ou a informacao nao esta presente.
+            final_text_prompt = """Voce e o METRON, assistente de metrologia da Gocal. Sua tarefa agora e analisar este CERTIFICADO DE CALIBRACAO e preencher um checklist de validacao.
 
-RETORNE APENAS o JSON abaixo (sem markdown, sem texto extra):
+TAREFA: Leia atentamente as imagens deste certificado de calibracao tecnico e verifique se cada criterio abaixo esta presente ou atendido no documento.
+
+Para cada item, retorne true se o certificado ATENDE ao criterio, ou false se NAO atende ou a informacao nao esta claramente presente.
+
+RETORNE APENAS o JSON abaixo (sem markdown, sem texto extra, sem crases):
 {
     "checklist_data": {
-        "1": true ou false,
-        "2": true ou false,
-        "3": true ou false,
-        "4": true ou false,
-        "5": true ou false,
-        "6": true ou false,
-        "7": true ou false,
-        "8": true ou false,
-        "9": true ou false,
-        "10": true ou false,
-        "11": true ou false,
-        "12": true ou false
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "12": true
     },
     "message": "Resumo da analise explicando o que foi encontrado e o que faltou"
 }
 
-CRITERIOS DE CADA ITEM:
+CRITERIOS DE CADA ITEM DO CHECKLIST:
 1. Identificacao do Laboratorio: O laboratorio e acreditado (RBC/INMETRO ou equivalente)?
 2. Identificacao do Instrumento: O certificado contem tipo, marca, modelo, numero de serie, faixa de medicao e resolucao?
 3. Local e Cliente: Ha identificacao do cliente e local da calibracao (in loco ou em laboratorio)?
@@ -131,7 +134,8 @@ CRITERIOS DE CADA ITEM:
 11. Assinatura: Tem assinatura do responsavel tecnico?
 12. Integridade: O instrumento esta em boas condicoes de uso?
 
-IMPORTANTE: Retorne APENAS o JSON. Marque false quando a informacao NAO estiver presente no documento."""
+Substitua true/false conforme sua analise real do documento. Marque false quando a informacao NAO estiver presente.
+IMPORTANTE: Esta e uma tarefa tecnica de metrologia/qualidade. Analise o documento e retorne SOMENTE o JSON."""
             print("[IA] Modo CHECKLIST ativado!")
 
         elif is_extraction_request:
@@ -192,6 +196,24 @@ IMPORTANTE: Retorne APENAS o JSON. Marque false quando a informacao NAO estiver 
             # Extrai resposta
             content = response.choices[0].message.content
             print(f"[IA] Resposta recebida ({len(content)} caracteres)")
+            print(f"[IA] Conteudo: {content[:500]}")
+
+            # Se a IA recusou (respostas tipicas de recusa), tenta de novo com modelo diferente
+            recusa_patterns = ["i'm sorry", "i can't assist", "i cannot assist", "i can't help", "i cannot help", "sorry, i can"]
+            if any(p in content.lower() for p in recusa_patterns):
+                print("[IA] DETECTADA RECUSA DA IA! Tentando novamente com prompt reforçado...")
+                # Retry com prompt mais direto
+                messages[0]["content"] = """Voce e um assistente tecnico de metrologia. Sua UNICA funcao e analisar certificados de calibracao.
+As imagens enviadas sao de um certificado de calibracao tecnico. Voce DEVE analisa-las e responder conforme solicitado.
+Isso e uma tarefa 100% legitima de controle de qualidade industrial."""
+                response2 = self.client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=messages,
+                    max_tokens=4000,
+                    temperature=0.2
+                )
+                content = response2.choices[0].message.content
+                print(f"[IA] Retry resposta ({len(content)} caracteres): {content[:500]}")
 
             # Remove markdown code blocks se existirem
             if content.startswith('```'):

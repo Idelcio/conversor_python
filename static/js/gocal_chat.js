@@ -794,14 +794,166 @@ function scrollToBottom() {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+// Valida se uma string e uma data valida no formato YYYY-MM-DD
+function isValidDate(str) {
+    if (!str || str === 'n/i' || str === 'N/I') return false;
+    // Aceita YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return !isNaN(Date.parse(str));
+    // Aceita DD/MM/YYYY e converte
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) return true;
+    return false;
+}
+
+// Converte DD/MM/YYYY para YYYY-MM-DD
+function normalizarData(str) {
+    if (!str) return '';
+    const brMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (brMatch) return `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+    return str;
+}
+
+// Verifica campos obrigatorios do Gocal e retorna lista de pendencias
+function validarCamposGocal(instrumentos) {
+    const pendencias = [];
+    instrumentos.forEach((inst, idx) => {
+        const nome = inst.identificacao || inst.nome || `Instrumento ${idx + 1}`;
+        const campos = [];
+
+        if (!isValidDate(inst.data_calibracao)) {
+            campos.push('data_calibracao');
+        }
+        const perio = inst.periodicidade;
+        if (!perio || perio === 'n/i' || perio === 'N/I' || isNaN(parseInt(perio))) {
+            campos.push('periodicidade');
+        }
+        const numCert = inst.numero_certificado || inst.identificacao;
+        if (!numCert || numCert === 'n/i' || numCert === 'N/I') {
+            campos.push('numero_certificado');
+        }
+
+        if (campos.length > 0) {
+            pendencias.push({ idx, nome, campos });
+        }
+    });
+    return pendencias;
+}
+
+// Renderiza formulario no chat para preencher campos faltantes
+function mostrarFormularioCalibracao(pendencias, onSubmit) {
+    let html = '<div style="background:#fff3cd; border-left:4px solid #ffc107; border-radius:8px; padding:12px; margin-bottom:8px;">';
+    html += '<strong>⚠️ Campos obrigatorios para criar a calibracao no Gocal:</strong><br><br>';
+
+    pendencias.forEach((p) => {
+        html += `<div style="margin-bottom:12px; padding:8px; background:#fff; border:1px solid #eee; border-radius:6px;">`;
+        html += `<strong style="font-size:12px;">📄 ${p.nome}</strong><br>`;
+
+        if (p.campos.includes('data_calibracao')) {
+            const existing = extractedData[p.idx].data_calibracao;
+            const val = (existing && existing !== 'n/i' && existing !== 'N/I') ? normalizarData(existing) : '';
+            html += `<label style="font-size:12px; color:#555;">Data da Calibracao:</label>
+                <input type="date" id="gocal-data-${p.idx}" value="${val}" style="width:100%; padding:4px 8px; border:1px solid #ccc; border-radius:4px; font-size:12px; margin-bottom:6px;"><br>`;
+        }
+        if (p.campos.includes('periodicidade')) {
+            const existing = extractedData[p.idx].periodicidade;
+            const val = (existing && existing !== 'n/i' && !isNaN(parseInt(existing))) ? parseInt(existing) : 12;
+            html += `<label style="font-size:12px; color:#555;">Periodicidade (meses):</label>
+                <input type="number" id="gocal-perio-${p.idx}" value="${val}" min="1" max="120" style="width:100%; padding:4px 8px; border:1px solid #ccc; border-radius:4px; font-size:12px; margin-bottom:6px;"><br>`;
+        }
+        if (p.campos.includes('numero_certificado')) {
+            html += `<label style="font-size:12px; color:#555;">Numero do Certificado:</label>
+                <input type="text" id="gocal-cert-${p.idx}" placeholder="Ex: CL-2024-001" style="width:100%; padding:4px 8px; border:1px solid #ccc; border-radius:4px; font-size:12px; margin-bottom:6px;"><br>`;
+        }
+        html += '</div>';
+    });
+
+    html += `<button id="gocal-form-submit" style="padding:8px 20px; background:#4CAF50; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:500; width:100%;">Confirmar e Inserir</button>`;
+    html += '</div>';
+
+    addBotMessage(html);
+
+    // Aguarda o botao ser renderizado e adiciona listener
+    setTimeout(() => {
+        const btn = document.getElementById('gocal-form-submit');
+        if (btn) {
+            btn.addEventListener('click', () => {
+                // Coleta valores do formulario e atualiza extractedData
+                let allValid = true;
+                pendencias.forEach((p) => {
+                    if (p.campos.includes('data_calibracao')) {
+                        const input = document.getElementById(`gocal-data-${p.idx}`);
+                        if (input && input.value) {
+                            extractedData[p.idx].data_calibracao = input.value;
+                        } else {
+                            allValid = false;
+                        }
+                    }
+                    if (p.campos.includes('periodicidade')) {
+                        const input = document.getElementById(`gocal-perio-${p.idx}`);
+                        if (input && input.value) {
+                            extractedData[p.idx].periodicidade = parseInt(input.value);
+                        } else {
+                            allValid = false;
+                        }
+                    }
+                    if (p.campos.includes('numero_certificado')) {
+                        const input = document.getElementById(`gocal-cert-${p.idx}`);
+                        if (input && input.value) {
+                            extractedData[p.idx].numero_certificado = input.value;
+                            if (!extractedData[p.idx].identificacao || extractedData[p.idx].identificacao === 'n/i') {
+                                extractedData[p.idx].identificacao = input.value;
+                            }
+                        } else {
+                            allValid = false;
+                        }
+                    }
+                });
+
+                if (!allValid) {
+                    addBotMessage('⚠️ Preencha todos os campos obrigatorios antes de continuar.');
+                    return;
+                }
+
+                btn.disabled = true;
+                btn.textContent = 'Inserindo...';
+                btn.style.background = '#888';
+                onSubmit();
+            });
+        }
+    }, 100);
+}
+
 async function insertarNoBanco() {
     if (!extractedData) {
-        addBotMessage('⚠️ Nenhum dado extraído disponível para inserir. Faça a extração primeiro.');
+        addBotMessage('⚠️ Nenhum dado extraido disponivel para inserir. Faca a extracao primeiro.');
         return;
     }
 
+    // Valida campos obrigatorios do Gocal antes de inserir
+    const pendencias = validarCamposGocal(extractedData);
+
+    if (pendencias.length > 0) {
+        // Mostra formulario e espera o usuario preencher
+        mostrarFormularioCalibracao(pendencias, () => {
+            // Callback: usuario preencheu, agora insere de verdade
+            executarInsercao();
+        });
+        return;
+    }
+
+    // Tudo valido, insere direto
+    executarInsercao();
+}
+
+async function executarInsercao() {
+    // Normaliza datas antes de enviar (DD/MM/YYYY -> YYYY-MM-DD)
+    extractedData.forEach((inst) => {
+        if (inst.data_calibracao) {
+            inst.data_calibracao = normalizarData(inst.data_calibracao);
+        }
+    });
+
     // Tenta pegar o user_id do campo oculto (injetado pelo Gocal/Widget)
-    // Se não tiver, usa contexto do postMessage ou fallback
+    // Se nao tiver, usa contexto do postMessage ou fallback
     let userId = null;
     const integrationField = document.getElementById('integrationUserId');
     if (integrationField && integrationField.value) {
@@ -817,7 +969,7 @@ async function insertarNoBanco() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 instrumentos: extractedData,
-                user_id: parseInt(userId) // Envia user_id explicitamente
+                user_id: parseInt(userId)
             })
         });
 
@@ -850,7 +1002,7 @@ async function insertarNoBanco() {
         }
     } catch (error) {
         removeLastMessage();
-        addBotMessage(`❌ Erro de comunicação: ${error.message}`);
+        addBotMessage(`❌ Erro de comunicacao: ${error.message}`);
     }
 }
 
