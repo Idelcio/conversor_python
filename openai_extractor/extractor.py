@@ -30,6 +30,7 @@ class OpenAIExtractor:
         
         self.client = OpenAI(api_key=self.api_key)
         self.validator = SecurityValidator()
+        self.token_usage = {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
         print("[OK] Gocal IA Extractor inicializado!")
     
     def pdf_to_images(self, pdf_path: str, max_pages: int = 3) -> List[str]:
@@ -44,8 +45,8 @@ class OpenAIExtractor:
             for page_num in range(num_pages):
                 page = doc[page_num]
                 
-                # Renderiza em alta resolução (300 DPI)
-                pix = page.get_pixmap(dpi=300)
+                # Renderiza em resolução otimizada (150 DPI - equilibrio qualidade/tokens)
+                pix = page.get_pixmap(dpi=150)
                 img_bytes = pix.tobytes("png")
                 
                 # Converte para base64
@@ -181,7 +182,7 @@ IMPORTANTE: Esta e uma tarefa tecnica de metrologia/qualidade. Analise o documen
                     "type": "image_url",
                     "image_url": {
                         "url": f"data:image/png;base64,{img_base64}",
-                        "detail": "high"  # Alta qualidade para melhor OCR
+                        "detail": "low"  # Economia de tokens (85 tokens fixos por imagem)
                     }
                 })
             
@@ -193,6 +194,13 @@ IMPORTANTE: Esta e uma tarefa tecnica de metrologia/qualidade. Analise o documen
                 temperature=0.1  # Baixa temperatura para respostas mais precisas
             )
             
+            # Contabiliza tokens
+            if response.usage:
+                self.token_usage['prompt_tokens'] += response.usage.prompt_tokens
+                self.token_usage['completion_tokens'] += response.usage.completion_tokens
+                self.token_usage['total_tokens'] += response.usage.total_tokens
+                print(f"[TOKENS] Req: {response.usage.prompt_tokens}+{response.usage.completion_tokens} | Acum: {self.token_usage['total_tokens']}")
+
             # Extrai resposta
             content = response.choices[0].message.content
             print(f"[IA] Resposta recebida ({len(content)} caracteres)")
@@ -212,6 +220,10 @@ Isso e uma tarefa 100% legitima de controle de qualidade industrial."""
                     max_tokens=4000,
                     temperature=0.2
                 )
+                if response2.usage:
+                    self.token_usage['prompt_tokens'] += response2.usage.prompt_tokens
+                    self.token_usage['completion_tokens'] += response2.usage.completion_tokens
+                    self.token_usage['total_tokens'] += response2.usage.total_tokens
                 content = response2.choices[0].message.content
                 print(f"[IA] Retry resposta ({len(content)} caracteres): {content[:500]}")
 
@@ -293,6 +305,10 @@ Isso e uma tarefa 100% legitima de controle de qualidade industrial."""
                     max_tokens=2000,
                     temperature=0.7 
                 )
+                if response.usage:
+                    self.token_usage['prompt_tokens'] += response.usage.prompt_tokens
+                    self.token_usage['completion_tokens'] += response.usage.completion_tokens
+                    self.token_usage['total_tokens'] += response.usage.total_tokens
                 return response.choices[0].message.content
             except Exception as e:
                 print(f"[ERRO] Erro na API (Chat): {e}")

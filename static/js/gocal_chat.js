@@ -1,5 +1,20 @@
 let uploadedFiles = [];
 let extractedData = null;
+let sessionTokens = 0;
+
+function updateTokenCounter(tokenData) {
+    if (!tokenData) return;
+    const total = tokenData.total_tokens || 0;
+    if (total > sessionTokens) sessionTokens = total;
+    const el = document.getElementById('tokenCounter');
+    if (el) {
+        if (sessionTokens >= 1000) {
+            el.textContent = (sessionTokens / 1000).toFixed(1) + 'k tokens';
+        } else {
+            el.textContent = sessionTokens + ' tokens';
+        }
+    }
+}
 let currentUserId = new URLSearchParams(window.location.search).get('user_id') || null;
 let currentPageContext = null;
 
@@ -441,6 +456,7 @@ async function sendMessage() {
             const data = await response.json();
             removeLastMessage();
             addBotMessage(data.message);
+            updateTokenCounter(data.token_usage);
 
             // Navegação Real
             if (data.redirect_url) {
@@ -470,6 +486,7 @@ function pollProgress(taskId) {
         try {
             const res = await fetch(`/upload-status/${taskId}`);
             const statusData = await res.json();
+            updateTokenCounter(statusData.token_usage);
 
             // Atualiza cada arquivo na lista lateral
             if (statusData.files) {

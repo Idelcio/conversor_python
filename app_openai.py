@@ -360,6 +360,12 @@ INSTRUCOES:
                 ]
             )
 
+            # Contabiliza tokens no extractor
+            if completion.usage and extractor:
+                extractor.token_usage['prompt_tokens'] += completion.usage.prompt_tokens
+                extractor.token_usage['completion_tokens'] += completion.usage.completion_tokens
+                extractor.token_usage['total_tokens'] += completion.usage.total_tokens
+
             resposta = completion.choices[0].message.content
         
         # Tenta parsear se a IA mandou um JSON (Navegacao ou Checklist)
@@ -389,7 +395,8 @@ INSTRUCOES:
         except:
             pass # Nao e JSON, segue normal
 
-        return jsonify({'success': True, 'message': resposta})
+        token_data = extractor.token_usage if extractor else {}
+        return jsonify({'success': True, 'message': resposta, 'token_usage': token_data})
 
     except Exception as e:
         error_msg = str(e)
@@ -541,7 +548,10 @@ def upload_async():
 @app.route('/upload-status/<task_id>')
 def check_status(task_id):
     """Retorna o status do processamento assincrono"""
-    return jsonify(processing_tasks.get(task_id, {'status': 'not_found'}))
+    data = processing_tasks.get(task_id, {'status': 'not_found'})
+    if extractor:
+        data['token_usage'] = extractor.token_usage
+    return jsonify(data)
 
 
 
@@ -1068,6 +1078,13 @@ def servir_certificado_pdf(calibracao_id):
     except Exception as e:
         print(f"[ERRO] Servir PDF: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/token-usage')
+def token_usage():
+    """Retorna o uso acumulado de tokens da sessao"""
+    if extractor:
+        return jsonify(extractor.token_usage)
+    return jsonify({'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0})
 
 @app.route('/health')
 def health():
