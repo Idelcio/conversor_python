@@ -1,0 +1,671 @@
+/**
+ * PROCESSAMENTO EM LOTE - JavaScript
+ * Gerencia upload, processamento em background e exibição de resultados
+ */
+
+(function () {
+    'use strict';
+
+    // ============================================
+    // ESTADO
+    // ============================================
+    let selectedFiles = [];
+    let extractedResults = [];
+    let currentTaskId = null;
+    let pollInterval = null;
+
+    // ============================================
+    // REFERÊNCIAS DOM
+    // ============================================
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+    const filesPreview = document.getElementById('filesPreview');
+    const filesList = document.getElementById('filesList');
+    const filesCount = document.getElementById('filesCount');
+    const clearFilesBtn = document.getElementById('clearFilesBtn');
+    const uploadActions = document.getElementById('uploadActions');
+    const btnProcessar = document.getElementById('btnProcessar');
+
+    const uploadSection = document.getElementById('uploadSection');
+    const progressSection = document.getElementById('progressSection');
+    const resultsSection = document.getElementById('resultsSection');
+    const insertResult = document.getElementById('insertResult');
+
+    const progressBarFill = document.getElementById('progressBarFill');
+    const progressPercent = document.getElementById('progressPercent');
+    const progressLabel = document.getElementById('progressLabel');
+    const progressDetail = document.getElementById('progressDetail');
+    const progressFiles = document.getElementById('progressFiles');
+
+    const resultsStats = document.getElementById('resultsStats');
+    const resultsGrid = document.getElementById('resultsGrid');
+    const resultsDesc = document.getElementById('resultsDesc');
+    const btnInserirBanco = document.getElementById('btnInserirBanco');
+    const btnExportarJSON = document.getElementById('btnExportarJSON');
+    const btnNovoLote = document.getElementById('btnNovoLote');
+
+    // ============================================
+    // UPLOAD HANDLERS
+    // ============================================
+
+    // Click na zona de upload
+    uploadZone.addEventListener('click', () => fileInput.click());
+
+    // Drag & Drop
+    uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('dragover');
+    });
+
+    uploadZone.addEventListener('dragleave', () => {
+        uploadZone.classList.remove('dragover');
+    });
+
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('dragover');
+        addFiles(e.dataTransfer.files);
+    });
+
+    // File input change
+    fileInput.addEventListener('change', (e) => {
+        addFiles(e.target.files);
+    });
+
+    // Drag & Drop global (body)
+    document.body.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('dragover');
+    });
+
+    document.body.addEventListener('dragleave', (e) => {
+        if (e.clientX === 0 || e.clientY === 0) {
+            uploadZone.classList.remove('dragover');
+        }
+    });
+
+    document.body.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('dragover');
+        if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+            addFiles(e.dataTransfer.files);
+        }
+    });
+
+    // Limpar arquivos
+    clearFilesBtn.addEventListener('click', () => {
+        selectedFiles = [];
+        renderFilesList();
+        fileInput.value = '';
+    });
+
+    // ============================================
+    // FILE MANAGEMENT
+    // ============================================
+    function addFiles(fileList) {
+        const newFiles = Array.from(fileList).filter(f =>
+            f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')
+        );
+
+        if (newFiles.length === 0) {
+            showToast('Apenas arquivos PDF são aceitos.', 'error');
+            return;
+        }
+
+        // Evita duplicatas por nome
+        newFiles.forEach(file => {
+            if (!selectedFiles.find(f => f.name === file.name && f.size === file.size)) {
+                selectedFiles.push(file);
+            }
+        });
+
+        renderFilesList();
+        showToast(`${newFiles.length} arquivo(s) adicionado(s).`, 'success');
+    }
+
+    function removeFile(index) {
+        selectedFiles.splice(index, 1);
+        renderFilesList();
+    }
+
+    function renderFilesList() {
+        if (selectedFiles.length === 0) {
+            filesPreview.style.display = 'none';
+            uploadActions.style.display = 'none';
+            return;
+        }
+
+        filesPreview.style.display = 'block';
+        uploadActions.style.display = 'flex';
+        filesCount.textContent = `${selectedFiles.length} arquivo(s)`;
+
+        filesList.innerHTML = selectedFiles.map((file, idx) => `
+            <div class="file-item" style="animation-delay: ${idx * 0.05}s">
+                <span class="file-item-icon">📄</span>
+                <div class="file-item-info">
+                    <div class="file-item-name">${file.name}</div>
+                    <div class="file-item-size">${formatFileSize(file.size)}</div>
+                </div>
+                <button class="file-item-remove" onclick="window.__removeLoteFile(${idx})" title="Remover">✖</button>
+            </div>
+        `).join('');
+    }
+
+    // Expor função de remoção
+    window.__removeLoteFile = removeFile;
+
+    // ============================================
+    // PROCESSAMENTO
+    // ============================================
+    btnProcessar.addEventListener('click', startProcessing);
+
+    async function startProcessing() {
+        if (selectedFiles.length === 0) {
+            showToast('Selecione ao menos um arquivo PDF.', 'error');
+            return;
+        }
+
+        // Desabilita botão
+        btnProcessar.disabled = true;
+        btnProcessar.innerHTML = '<span class="mini-spinner"></span> Enviando...';
+
+        // Monta FormData
+        const formData = new FormData();
+        selectedFiles.forEach(file => {
+            formData.append('pdfs', file);
+        });
+        formData.append('comando', 'extrair dados estruturados em json para banco de dados');
+
+        try {
+            const response = await fetch('/upload-async', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.task_id) {
+                currentTaskId = data.task_id;
+
+                // Mostra seção de progresso
+                showProgressSection();
+
+                // Inicia polling
+                startPolling(data.task_id);
+
+                showToast('Processamento iniciado!', 'info');
+            } else {
+                showToast('Erro ao iniciar: ' + (data.message || 'Desconhecido'), 'error');
+                resetProcessButton();
+            }
+        } catch (err) {
+            console.error('Erro ao enviar:', err);
+            showToast('Erro de conexão com o servidor.', 'error');
+            resetProcessButton();
+        }
+    }
+
+    function resetProcessButton() {
+        btnProcessar.disabled = false;
+        btnProcessar.innerHTML = '<span class="btn-icon">🚀</span> Iniciar Processamento';
+    }
+
+    function showProgressSection() {
+        progressSection.style.display = 'block';
+        progressSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        // Renderiza lista de arquivos em progresso (usa INDICE como ID)
+        progressFiles.innerHTML = selectedFiles.map((file, idx) => `
+            <div class="progress-file" id="pf-${idx}">
+                <span class="progress-file-icon"><span class="pending-dot"></span></span>
+                <span class="progress-file-name">${file.name}</span>
+                <span class="progress-file-status pending">Na fila</span>
+            </div>
+        `).join('');
+    }
+
+    // ============================================
+    // POLLING
+    // ============================================
+    function startPolling(taskId) {
+        pollInterval = setInterval(async () => {
+            try {
+                const res = await fetch(`/upload-status/${taskId}`);
+                const status = await res.json();
+
+                updateProgress(status);
+
+                if (status.status === 'completed' || status.status === 'error') {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+
+                    if (status.results && status.results.length > 0) {
+                        extractedResults = status.results;
+                        showResultsSection(status);
+                    } else {
+                        showToast('Processamento finalizado sem resultados.', 'error');
+                    }
+                }
+            } catch (err) {
+                console.error('Polling error:', err);
+                clearInterval(pollInterval);
+            }
+        }, 1200);
+    }
+
+    function updateProgress(status) {
+        const total = status.total || 1;
+        const completed = status.completed || 0;
+        const percent = Math.round((completed / total) * 100);
+
+        progressBarFill.style.width = percent + '%';
+        progressPercent.textContent = percent + '%';
+        progressLabel.textContent = `Processando (${completed}/${total})`;
+
+        if (status.status === 'running') {
+            progressDetail.innerHTML = '<span class="mini-spinner"></span> A IA está analisando os documentos... Não feche esta página.';
+        } else if (status.status === 'completed') {
+            progressDetail.textContent = '✅ Processamento concluído!';
+        } else {
+            progressDetail.innerHTML = '<span class="mini-spinner"></span> Iniciando processamento...';
+        }
+
+        // Atualiza status individual dos arquivos (usa INDICE para match)
+        if (status.files) {
+            // Python dict preserva ordem de insercao (3.7+), mesma ordem do upload
+            const entries = Object.entries(status.files);
+            entries.forEach(([serverFilename, fileStatus], idx) => {
+                const el = document.getElementById('pf-' + idx);
+                if (!el) return;
+
+                // Remove classes anteriores
+                el.classList.remove('processing', 'done', 'error');
+
+                const statusEl = el.querySelector('.progress-file-status');
+                const iconEl = el.querySelector('.progress-file-icon');
+
+                if (fileStatus === 'processing') {
+                    el.classList.add('processing');
+                    statusEl.className = 'progress-file-status processing';
+                    statusEl.textContent = 'Processando...';
+                    iconEl.innerHTML = '<span class="mini-spinner"></span>';
+                } else if (fileStatus === 'done') {
+                    el.classList.add('done');
+                    statusEl.className = 'progress-file-status done';
+                    statusEl.textContent = 'Concluído';
+                    iconEl.textContent = '✅';
+                } else if (fileStatus === 'error') {
+                    el.classList.add('error');
+                    statusEl.className = 'progress-file-status error';
+                    statusEl.textContent = 'Erro';
+                    iconEl.textContent = '❌';
+                } else {
+                    // pending - manter animação
+                    statusEl.className = 'progress-file-status pending';
+                    statusEl.textContent = 'Na fila';
+                    iconEl.innerHTML = '<span class="pending-dot"></span>';
+                }
+            });
+        }
+    }
+
+    // ============================================
+    // RESULTADOS
+    // ============================================
+    function showResultsSection(status) {
+        // Finaliza progresso
+        progressBarFill.style.width = '100%';
+        progressPercent.textContent = '100%';
+        progressLabel.textContent = 'Processamento concluído!';
+        progressDetail.textContent = `${extractedResults.length} instrumento(s) extraído(s) com sucesso.`;
+
+        // Mostra seção de resultados
+        resultsSection.style.display = 'block';
+        resultsDesc.textContent = `${extractedResults.length} instrumento(s) extraído(s) de ${selectedFiles.length} arquivo(s).`;
+
+        // Estatísticas
+        const totalGrandezas = extractedResults.reduce((sum, inst) =>
+            sum + (inst.grandezas ? inst.grandezas.length : 0), 0
+        );
+        const comData = extractedResults.filter(i =>
+            i.data_calibracao && i.data_calibracao !== 'n/i' && i.data_calibracao !== 'N/I'
+        ).length;
+
+        resultsStats.innerHTML = `
+            <div class="stat-card">
+                <div class="stat-card-number">${extractedResults.length}</div>
+                <div class="stat-card-label">Instrumentos</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-number">${totalGrandezas}</div>
+                <div class="stat-card-label">Grandezas</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-number">${comData}</div>
+                <div class="stat-card-label">Com Data Calib.</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-number">${selectedFiles.length}</div>
+                <div class="stat-card-label">PDFs Processados</div>
+            </div>
+        `;
+
+        // Renderiza cards
+        resultsGrid.innerHTML = extractedResults.map((inst, idx) => renderResultCard(inst, idx)).join('');
+
+        // Scroll suave
+        setTimeout(() => {
+            resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 300);
+
+        showToast(`${extractedResults.length} instrumento(s) extraído(s) com sucesso!`, 'success');
+    }
+
+    function renderResultCard(inst, idx) {
+        const nome = inst.nome || inst.instrumento || 'Instrumento';
+        const ident = inst.identificacao || inst.numero_certificado || 'S/N';
+        const statusRaw = inst.status || 'Sem Calibração';
+        const statusClass = getStatusClass(statusRaw);
+
+        return `
+        <div class="result-card" id="result-${idx}">
+            <div class="result-card-header" onclick="window.__toggleResultCard(${idx})">
+                <div class="result-card-title">
+                    <div class="result-card-idx">${idx + 1}</div>
+                    <div>
+                        <div class="result-card-name">${nome}</div>
+                        <div class="result-card-id">📄 ${ident}</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="result-card-status ${statusClass}">${statusRaw}</span>
+                    <span class="result-card-toggle" id="toggle-${idx}">▼</span>
+                </div>
+            </div>
+            <div class="result-card-body" id="body-${idx}">
+                ${renderResultCardBody(inst)}
+            </div>
+        </div>
+        `;
+    }
+
+    function renderResultCardBody(inst) {
+        let html = '';
+
+        // Informações básicas
+        html += `
+        <div class="info-block">
+            <div class="info-block-title">Informações Básicas</div>
+            <div class="info-grid">
+                ${infoItem('Identificação', inst.identificacao)}
+                ${infoItem('Nome', inst.nome)}
+                ${infoItem('Fabricante', inst.fabricante)}
+                ${infoItem('Modelo', inst.modelo)}
+                ${infoItem('Nº Série', inst.numero_serie)}
+                ${infoItem('Descrição', inst.descricao)}
+            </div>
+        </div>`;
+
+        // Calibração
+        html += `
+        <div class="info-block">
+            <div class="info-block-title">Dados da Calibração</div>
+            <div class="info-grid">
+                ${infoItem('Data Calibração', inst.data_calibracao)}
+                ${infoItem('Data Emissão', inst.data_emissao)}
+                ${infoItem('Validade', inst.validade || inst.data_proxima_calibracao)}
+                ${infoItem('Nº Certificado', inst.numero_certificado)}
+                ${infoItem('Laboratório', inst.laboratorio || inst.laboratorio_responsavel)}
+                ${infoItem('Motivo', inst.motivo_calibracao)}
+            </div>
+        </div>`;
+
+        // Meta
+        html += `
+        <div class="info-block">
+            <div class="info-block-title">Informações Complementares</div>
+            <div class="info-grid">
+                ${infoItem('Responsável', inst.responsavel)}
+                ${infoItem('Departamento', inst.departamento)}
+                ${infoItem('Periodicidade', inst.periodicidade ? inst.periodicidade + ' meses' : null)}
+                ${infoItem('Criticidade', inst.criticidade)}
+                ${infoItem('Status', inst.status)}
+            </div>
+        </div>`;
+
+        // Grandezas
+        if (inst.grandezas && Array.isArray(inst.grandezas) && inst.grandezas.length > 0) {
+            html += `<div class="info-block">
+                <div class="info-block-title">Grandezas (${inst.grandezas.length})</div>`;
+
+            inst.grandezas.forEach((g, gi) => {
+                html += `
+                <div class="grandeza-block">
+                    <div class="grandeza-block-title">Grandeza ${gi + 1}</div>
+                    ${g.servicos && g.servicos.length > 0 ? `
+                        <div class="grandeza-tags">
+                            ${g.servicos.map(s => `<span class="grandeza-tag">${s}</span>`).join('')}
+                        </div>
+                    ` : ''}
+                    <div class="info-grid">
+                        ${infoItem('Faixa Nominal', g.faixa_nominal)}
+                        ${infoItem('Unidade', g.unidade)}
+                        ${infoItem('Resolução', g.resolucao)}
+                        ${infoItem('Tolerância', g.tolerancia_processo)}
+                        ${infoItem('Critério', g.criterio_aceitacao)}
+                        ${infoItem('Faixa de Uso', g.faixa_uso)}
+                        ${infoItem('Classe/Norma', g.classe_norma)}
+                        ${infoItem('Classificação', g.classificacao)}
+                    </div>
+                </div>`;
+            });
+
+            html += `</div>`;
+        }
+
+        return html;
+    }
+
+    function infoItem(label, value) {
+        const displayValue = (value && value !== 'n/i' && value !== 'N/I') ? value : '<span style="color:#ccc;">—</span>';
+        return `
+            <div class="info-item">
+                <span class="info-label">${label}</span>
+                <span class="info-value">${displayValue}</span>
+            </div>`;
+    }
+
+    function getStatusClass(status) {
+        if (!status) return 'sem-calibracao';
+        const s = status.toLowerCase();
+        if (s.includes('aprovado')) return 'aprovado';
+        if (s.includes('pendente')) return 'pendente';
+        if (s.includes('reprovado')) return 'reprovado';
+        return 'sem-calibracao';
+    }
+
+    // Toggle card details
+    window.__toggleResultCard = function (idx) {
+        const body = document.getElementById('body-' + idx);
+        const toggle = document.getElementById('toggle-' + idx);
+
+        if (body.classList.contains('visible')) {
+            body.classList.remove('visible');
+            toggle.classList.remove('open');
+        } else {
+            body.classList.add('visible');
+            toggle.classList.add('open');
+        }
+    };
+
+    // ============================================
+    // AÇÕES DE RESULTADO
+    // ============================================
+
+    // Inserir no Banco
+    // Inserir no Banco
+    btnInserirBanco.addEventListener('click', () => {
+        if (extractedResults.length === 0) {
+            showToast('Nenhum dado para inserir.', 'error');
+            return;
+        }
+
+        // 1. Validação de campos obrigatórios
+        const pendencias = typeof validatingCamposGocal === 'function'
+            ? validarCamposGocal(extractedResults)
+            : (window.validarCamposGocal ? window.validarCamposGocal(extractedResults) : []);
+
+        if (pendencias.length > 0) {
+            // Abre modal para correção
+            if (window.ValidationModal) {
+                window.ValidationModal.open(extractedResults, pendencias, (updates) => {
+                    // Callback: Usuário corrigiu e confirmou
+
+                    // Aplica correções no array principal
+                    Object.keys(updates).forEach(idx => {
+                        const fields = updates[idx];
+                        Object.keys(fields).forEach(key => {
+                            extractedResults[idx][key] = fields[key];
+                        });
+                    });
+
+                    // Tenta inserir novamente
+                    executarInsercaoBanco();
+                });
+                return;
+            } else {
+                console.warn('ValidationModal não encontrado, prosseguindo sem validar...');
+            }
+        }
+
+        // Se passar direto, insere
+        executarInsercaoBanco();
+    });
+
+    async function executarInsercaoBanco() {
+        const userId = document.getElementById('userId')?.value || 1;
+        const funcionarioId = document.getElementById('funcionarioId')?.value || null;
+
+        btnInserirBanco.disabled = true;
+        btnInserirBanco.innerHTML = '<span class="mini-spinner"></span> Inserindo...';
+
+        try {
+            const response = await fetch('/inserir-banco', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    instrumentos: extractedResults,
+                    user_id: parseInt(userId),
+                    funcionario_id: funcionarioId,
+                    task_id: currentTaskId
+                })
+            });
+
+            const data = await response.json();
+
+            insertResult.style.display = 'block';
+            const card = document.getElementById('insertResultCard');
+
+            if (data.success) {
+                card.innerHTML = `
+                    <div class="insert-success">
+                        <div class="insert-success-icon">✅</div>
+                        <div class="insert-success-text">
+                            <h3>${data.message}</h3>
+                            <p>${data.inseridos || 0} inserido(s) • ${data.ignorados || 0} duplicata(s) ignorada(s)</p>
+                        </div>
+                    </div>`;
+
+                showToast('Dados inseridos no banco com sucesso!', 'success');
+            } else {
+                card.innerHTML = `
+                    <div class="insert-success">
+                        <div class="insert-success-icon">❌</div>
+                        <div class="insert-success-text insert-error-text">
+                            <h3>Erro na Inserção</h3>
+                            <p>${data.message || 'Erro desconhecido'}</p>
+                        </div>
+                    </div>`;
+
+                showToast('Erro ao inserir dados.', 'error');
+            }
+
+            insertResult.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        } catch (err) {
+            showToast('Erro de conexão: ' + err.message, 'error');
+        }
+
+        btnInserirBanco.disabled = false;
+        btnInserirBanco.innerHTML = '<span class="btn-icon">💾</span> Inserir Todos no Banco';
+    }
+
+    // Exportar JSON
+    btnExportarJSON.addEventListener('click', () => {
+        if (extractedResults.length === 0) return;
+
+        const jsonStr = JSON.stringify(extractedResults, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `metron_lote_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        showToast('JSON exportado com sucesso!', 'success');
+    });
+
+    // Novo Lote
+    btnNovoLote.addEventListener('click', () => {
+        selectedFiles = [];
+        extractedResults = [];
+        currentTaskId = null;
+
+        fileInput.value = '';
+        renderFilesList();
+        resetProcessButton();
+
+        progressSection.style.display = 'none';
+        resultsSection.style.display = 'none';
+        insertResult.style.display = 'none';
+
+        progressBarFill.style.width = '0%';
+        progressPercent.textContent = '0%';
+        progressFiles.innerHTML = '';
+
+        uploadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        showToast('Pronto para um novo lote!', 'info');
+    });
+
+    // ============================================
+    // UTILS
+    // ============================================
+    function sanitizeId(str) {
+        return str.replace(/[^a-zA-Z0-9]/g, '_');
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+
+        const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+        toast.innerHTML = `<span>${icons[type] || ''}</span> ${message}`;
+
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.animation = 'toastOut 0.3s ease forwards';
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
+    }
+
+})();

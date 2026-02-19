@@ -5,15 +5,32 @@
 
     // Pega user_id da página pai se existir (ex: input hidden ou variavel global)
     // Adapte isso conforme seu sistema Labster expõe o ID do usuário
+    // Pega user_id e funcionario_id da página pai
     let userId = "";
+    let funcionarioId = "";
+
     try {
-        // Tenta pegar de uma variavel global comum em sistemas legados
-        if (typeof current_user_id !== 'undefined') userId = current_user_id;
-        // Ou tenta pegar de um input hidden padrao
-        else if (document.getElementById('user_id')) userId = document.getElementById('user_id').value;
+        // Novo padrão: current_company_id + current_employee_id
+        if (typeof current_company_id !== 'undefined') {
+            userId = current_company_id;
+            if (typeof current_employee_id !== 'undefined' && current_employee_id) {
+                funcionarioId = current_employee_id;
+            }
+        }
+        // Fallback legado
+        else if (typeof current_user_id !== 'undefined') {
+            userId = current_user_id;
+        }
+        else if (document.getElementById('user_id')) {
+            userId = document.getElementById('user_id').value;
+        }
     } catch (e) { }
 
-    const FULL_URL = userId ? `${CHAT_URL}/?user_id=${userId}` : CHAT_URL;
+    let params = [];
+    if (userId) params.push(`user_id=${userId}`);
+    if (funcionarioId) params.push(`funcionario_id=${funcionarioId}`);
+
+    const FULL_URL = params.length > 0 ? `${CHAT_URL}/?${params.join('&')}` : CHAT_URL;
 
     // Estilos do Widget
     const style = document.createElement('style');
@@ -363,7 +380,7 @@
                         if (match) {
                             errDetail = match.map(m => m.replace(/.*>/, '')).join(', ');
                         }
-                    } catch(e) {}
+                    } catch (e) { }
                     console.error('[Metron] Erro validacao:', resp.status, errDetail);
                     erros.push(`Instrumento ${inst.instrumento_id}: ${errDetail}`);
                 } else if (resp.status === 419) {

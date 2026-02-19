@@ -287,6 +287,23 @@ fileInput.addEventListener('change', (e) => {
 function handleFiles(files) {
     uploadedFiles = Array.from(files);
 
+    // SUGESTÃO DE LOTE SE > 3 PDFs
+    if (uploadedFiles.length > 3) {
+        const baseUrl = window.location.origin;
+        addBotMessage(
+            `📦 Você selecionou <strong>${uploadedFiles.length} arquivos</strong>!<br><br>` +
+            `Para lotes grandes, recomendamos a <strong>página de Processamento em Lote</strong> ` +
+            `com acompanhamento visual detalhado.<br><br>` +
+            `<a href="${baseUrl}/lote" target="_blank" rel="noopener" ` +
+            `style="display:inline-block; padding:10px 20px; background:linear-gradient(135deg, #667eea, #764ba2); ` +
+            `color:#fff; border-radius:8px; text-decoration:none; font-weight:600; font-size:13px; ` +
+            `box-shadow: 0 4px 12px rgba(102,126,234,0.3);">` +
+            `🚀 Abrir Processamento em Lote</a>` +
+            `<br><br><span style="font-size:12px; color:#888;">Ou continue aqui mesmo — os arquivos já estão carregados.</span>`
+        );
+    }
+
+
     // VISUAL FEEDBACK IMEDIATO
     const fileNames = uploadedFiles.map(f => f.name).join(', ');
 
@@ -312,6 +329,7 @@ function handleFiles(files) {
 
     addBotMessage(`✅ ${files.length} arquivo(s) pronto(s)! Clique em 'Extrair Dados' ou digite um comando.`);
 }
+
 
 // Expor funcoes para o HTML (Garantia de funcionamento)
 window.handleFiles = handleFiles;

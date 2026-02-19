@@ -109,6 +109,7 @@ def index():
     # Ex: /?user_id=55&token=xyz
     integration_data = {
         'user_id': request.args.get('user_id'),
+        'funcionario_id': request.args.get('funcionario_id'),
         'token': request.args.get('token'),
         'empresa_id': request.args.get('empresa_id')
     }
@@ -116,6 +117,8 @@ def index():
     # Se vier user_id, salva na sessao para uso futuro
     if integration_data['user_id']:
         session['gocal_user_id'] = integration_data['user_id']
+    if integration_data['funcionario_id']:
+        session['gocal_funcionario_id'] = integration_data['funcionario_id']
 
     return render_template('gocal_chat.html', integration=integration_data)
 
@@ -124,6 +127,14 @@ def index():
 def visualizar():
     """Pagina de visualizacao de instrumentos"""
     return render_template('visualizar.html')
+
+
+@app.route('/lote')
+def processamento_lote():
+    """Pagina de processamento em lote de PDFs"""
+    user_id = request.args.get('user_id') or session.get('gocal_user_id', '')
+    funcionario_id = request.args.get('funcionario_id') or session.get('gocal_funcionario_id', '')
+    return render_template('processamento_lote.html', user_id=user_id, funcionario_id=funcionario_id)
 
 
 # ============================================================
@@ -498,12 +509,25 @@ def upload_async():
                      p, n = args
                      processing_tasks[tid]['files'][n] = 'processing'
                      try:
-                         # Extrai
+                         # Le o PDF como base64 ANTES de processar (para salvar no banco depois)
+                         import base64
+                         pdf_base64 = None
+                         try:
+                             with open(p, 'rb') as f:
+                                 pdf_base64 = base64.b64encode(f.read()).decode('utf-8')
+                         except:
+                             pass
+                         
+                         # Extrai dados com IA
                          res = extractor.extract_from_pdf(p, n, user_prompt=user_cmd)
                          try: os.remove(p)
                          except: pass
                          
                          if res and 'error' not in res:
+                             # Anexa o PDF base64 e nome original ao resultado
+                             if pdf_base64:
+                                 res['_pdf_base64'] = pdf_base64
+                                 res['_pdf_filename'] = n
                              processing_tasks[tid]['files'][n] = 'done'
                              return res
                          else:
@@ -548,7 +572,22 @@ def upload_async():
 @app.route('/upload-status/<task_id>')
 def check_status(task_id):
     """Retorna o status do processamento assincrono"""
-    data = processing_tasks.get(task_id, {'status': 'not_found'})
+    raw_data = processing_tasks.get(task_id, {'status': 'not_found'})
+    
+    # Cria uma copia rasa para nao alterar o original em cache (que tem o PDF)
+    data = raw_data.copy()
+    
+    # Se tiver resultados, remove o base64 para nao travar o front
+    if 'results' in data and data['results']:
+        clean_results = []
+        for res in data['results']:
+            # Copia o dict do resultado para remover a chave sem afetar o original
+            res_clean = res.copy()
+            if '_pdf_base64' in res_clean:
+                del res_clean['_pdf_base64']
+            clean_results.append(res_clean)
+        data['results'] = clean_results
+
     if extractor:
         data['token_usage'] = extractor.token_usage
     return jsonify(data)
@@ -561,7 +600,7 @@ def check_status(task_id):
 # Normalização de Status para o padrão do Gocal
 def normalizar_status(valor):
     if not valor:
-        return 'Sem Calibracao'
+        return 'Em Revisão'
     
     v = valor.lower().strip()
     
@@ -572,13 +611,13 @@ def normalizar_status(valor):
         return 'Inativo'
     if 'manutencao' in v:
         return 'Em Manutenção'
-    if 'sem' in v or 'calibracao' in v: # Default se contiver calibração
+    if 'sem' in v: 
         return 'Sem Calibração'
     if 'em calibracao' in v:
         return 'Em Calibração'
         
     # Default
-    return 'Sem Calibração'
+    return 'Em Revisão'
 
 @app.route('/inserir-banco', methods=['POST'])
 def inserir_banco():
@@ -586,6 +625,14 @@ def inserir_banco():
     try:
         data = request.get_json()
         user_id = int(data.get('user_id', 1))
+        funcionario_id = data.get('funcionario_id')
+        if funcionario_id:
+            try:
+                funcionario_id = int(funcionario_id)
+            except:
+                funcionario_id = None
+        else:
+            funcionario_id = None
 
         if 'session_id' not in session:
             # Em modo widget/iframe, a sessao pode se perder. 
@@ -604,6 +651,20 @@ def inserir_banco():
 
         if not instrumentos:
             return jsonify({'success': False, 'message': 'Nenhum instrumento para inserir.'}), 400
+
+        # Se veio task_id (lote), mescla o _pdf_base64 do cache do servidor
+        task_id = data.get('task_id')
+        if task_id and task_id in processing_tasks:
+            cached_results = processing_tasks[task_id].get('results', [])
+            for i, inst in enumerate(instrumentos):
+                if isinstance(inst, dict) and i < len(cached_results):
+                    cached = cached_results[i]
+                    if isinstance(cached, dict):
+                        if '_pdf_base64' in cached and '_pdf_base64' not in inst:
+                            inst['_pdf_base64'] = cached['_pdf_base64']
+                        if '_pdf_filename' in cached and '_pdf_filename' not in inst:
+                            inst['_pdf_filename'] = cached['_pdf_filename']
+            print(f"[DB] PDFs base64 mesclados do cache da task {task_id}")
 
         print(f"[DB] Inserindo {len(instrumentos)} instrumento(s) (user_id={user_id})")
 
@@ -662,7 +723,8 @@ def inserir_banco():
             periodicidade = buscar_valor('periodicidade', inst, 12)
             departamento = buscar_valor('departamento', inst) or buscar_valor('cliente', inst) or buscar_valor('localizacao', inst) or 'N/I'
             responsavel = buscar_valor('responsavel', inst) or buscar_valor('solicitante', inst) or 'N/I'
-            status = normalizar_status(buscar_valor('status', inst, 'Sem Calibração'))
+            # Default Status Instrumento: "Em Revisão"
+            status = normalizar_status(buscar_valor('status', inst)) or 'Em Revisão'
             tipo_familia = buscar_valor('tipo_familia', inst) or buscar_valor('tipo_documento', inst) or 'N/I'
             serie_desenv = buscar_valor('serie_desenv', inst) or buscar_valor('desenho', inst) or 'N/I'
             criticidade = buscar_valor('criticidade', inst) or 'N/I'
@@ -688,6 +750,24 @@ def inserir_banco():
             cursor.execute(sql, valores)
             instrumento_id = cursor.lastrowid
             total_inseridos += 1
+            
+            # --- LOG AUDITORIA (Instrumento) ---
+            try:
+                sql_audit = """
+                    INSERT INTO logs_auditoria (
+                        user_id, funcionario_id, acao, modelo, modelo_id, depois, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
+                """
+                # Serializa dados para JSON (depois)
+                dados_inst = {
+                    'identificacao': identificacao, 'nome': nome, 'status': status,
+                    'user_id': user_id, 'id': instrumento_id
+                }
+                cursor.execute(sql_audit, (
+                    user_id, funcionario_id, 'criado', 'Instrumento', instrumento_id, json.dumps(dados_inst, default=str)
+                ))
+            except Exception as e_audit:
+                print(f"[AVISO] Erro ao criar log auditoria instrumento: {e_audit}")
 
             # Cria calibracao automaticamente
             data_calib = buscar_valor('data_calibracao', inst)
@@ -712,11 +792,48 @@ def inserir_banco():
                     numero_cert, '',
                     laboratorio, motivo_calibracao,
                     data_calib, validade,
-                    'Pendente Aprovação', status
+                    'Em Revisão', status
                 )
                 cursor.execute(sql_cal, valores_cal)
                 calibracao_id = cursor.lastrowid
                 print(f"[DB] Calibracao #{calibracao_id} criada para instrumento #{instrumento_id}")
+                
+                 # --- LOG AUDITORIA (Calibracao) ---
+                try:
+                    dados_cal = {
+                        'instrumento_id': instrumento_id, 'numero_calibracao': numero_cert,
+                        'status_calibracao': 'Em Revisão', 'user_id': user_id, 'id': calibracao_id
+                    }
+                    cursor.execute(sql_audit, (
+                        user_id, funcionario_id, 'criado', 'Calibracao', calibracao_id, json.dumps(dados_cal, default=str)
+                    ))
+                except Exception as e_audit:
+                    print(f"[AVISO] Erro ao criar log auditoria calibracao: {e_audit}")
+
+                # Salva o PDF fisico na tabela certificados (igual ao Gocal Laravel)
+                pdf_base64 = inst.get('_pdf_base64')
+                pdf_filename = inst.get('_pdf_filename', 'certificado.pdf')
+                if calibracao_id and pdf_base64:
+                    try:
+                        import hashlib, time
+                        hash_name = hashlib.md5(f"{time.time()}_{pdf_filename}".encode()).hexdigest()
+                        arquivo_path = f"certificados/{hash_name}.pdf"
+                        
+                        sql_cert = """
+                            INSERT INTO certificados (
+                                calibracao_id, arquivo_pdf, nome_original,
+                                pdf_content, pdf_in_database,
+                                created_at, updated_at
+                            ) VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
+                        """
+                        cursor.execute(sql_cert, (
+                            calibracao_id, arquivo_path, pdf_filename,
+                            pdf_base64, 1
+                        ))
+                        print(f"[DB] Certificado PDF salvo para calibracao #{calibracao_id} ({pdf_filename})")
+                    except Exception as e_pdf:
+                        print(f"[AVISO] Erro ao salvar PDF para calibracao #{calibracao_id}: {e_pdf}")
+                        
             except Exception as e_cal:
                 calibracao_id = None
                 print(f"[AVISO] Erro ao criar calibracao para instrumento #{instrumento_id}: {e_cal}")

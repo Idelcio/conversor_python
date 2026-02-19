@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processamento em Lote - Metron | Gocal</title>
+    <meta name="description"
+        content="Processamento em lote de certificados PDF para extração de dados de instrumentos de calibração.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/processamento_lote.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modal_validation.css') }}">
+</head>
+
+<body>
+    <!-- Hidden fields -->
+    <!-- Hidden fields -->
+    <input type="hidden" id="userId" value="{{ user_id or '' }}">
+    <input type="hidden" id="funcionarioId" value="{{ funcionario_id or '' }}">
+
+    <!-- ============================================ -->
+    <!-- HEADER - Estilo Gocal -->
+    <!-- ============================================ -->
+    <header class="gocal-header" id="mainHeader">
+        <div class="header-inner">
+            <div class="header-brand">
+                <div class="brand-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M9 2L4 7v13a2 2 0 002 2h12a2 2 0 002-2V7l-5-5H9z" stroke="white" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" />
+                        <path d="M13 2v5h5" stroke="white" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                        <path d="M12 11v6M9 14h6" stroke="white" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="brand-title">Processamento em Lote</h1>
+                    <p class="brand-subtitle">Metron — Powered by Gocal</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- ============================================ -->
+    <!-- CONTEÚDO PRINCIPAL -->
+    <!-- ============================================ -->
+    <main class="main-content">
+        <!-- ETAPA 1: Upload -->
+        <section class="upload-section" id="uploadSection">
+            <div class="section-card">
+                <div class="section-header">
+                    <div class="section-number">1</div>
+                    <div>
+                        <h2 class="section-title">Enviar Certificados PDF</h2>
+                        <p class="section-desc">Arraste seus arquivos PDF ou clique para selecionar. Processamento
+                            otimizado para grandes volumes.</p>
+                    </div>
+                </div>
+
+                <div class="upload-zone" id="uploadZone">
+                    <input type="file" id="fileInput" multiple accept=".pdf" style="display: none;">
+                    <div class="upload-zone-content">
+                        <div class="upload-zone-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor"
+                                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                                <path d="M17 8l-5-5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+                                <path d="M12 3v12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+                            </svg>
+                        </div>
+                        <h3 class="upload-zone-title">Arraste seus PDFs aqui</h3>
+                        <p class="upload-zone-text">ou <span class="upload-zone-link">clique para selecionar</span></p>
+                        <p class="upload-zone-hint">Suporta múltiplos arquivos PDF • Máx. 50MB cada</p>
+                    </div>
+                </div>
+
+                <!-- Lista de arquivos selecionados -->
+                <div class="files-preview" id="filesPreview" style="display: none;">
+                    <div class="files-preview-header">
+                        <span class="files-count" id="filesCount">0 arquivo(s)</span>
+                        <button class="files-clear-btn" id="clearFilesBtn" title="Limpar todos">✖ Limpar</button>
+                    </div>
+                    <div class="files-list" id="filesList"></div>
+                </div>
+
+                <div class="upload-actions" id="uploadActions" style="display: none;">
+                    <button class="btn-primary btn-lg" id="btnProcessar">
+                        <span class="btn-icon">🚀</span>
+                        Iniciar Processamento
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ETAPA 2: Progresso -->
+        <section class="progress-section" id="progressSection" style="display: none;">
+            <div class="section-card">
+                <div class="section-header">
+                    <div class="section-number active">2</div>
+                    <div>
+                        <h2 class="section-title">Processamento em Andamento</h2>
+                        <p class="section-desc">Seus documentos estão sendo analisados pela IA. Você pode continuar
+                            navegando.</p>
+                    </div>
+                </div>
+
+                <!-- Barra de progresso geral -->
+                <div class="progress-overview">
+                    <div class="progress-stats">
+                        <span class="progress-label" id="progressLabel">Processando...</span>
+                        <span class="progress-percent" id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar-track">
+                        <div class="progress-bar-fill" id="progressBarFill" style="width: 0%;"></div>
+                    </div>
+                    <p class="progress-detail" id="progressDetail">Aguardando início...</p>
+                </div>
+
+                <!-- Lista de arquivos com status individual -->
+                <div class="progress-files" id="progressFiles"></div>
+            </div>
+        </section>
+
+        <!-- ETAPA 3: Resultados -->
+        <section class="results-section" id="resultsSection" style="display: none;">
+            <div class="section-card">
+                <div class="section-header">
+                    <div class="section-number done">✓</div>
+                    <div>
+                        <h2 class="section-title">Resultados da Extração</h2>
+                        <p class="section-desc" id="resultsDesc">Dados extraídos dos certificados PDF.</p>
+                    </div>
+                </div>
+
+                <!-- Estatísticas resumidas -->
+                <div class="results-stats" id="resultsStats"></div>
+
+                <!-- Cards de instrumentos -->
+                <div class="results-grid" id="resultsGrid"></div>
+
+                <!-- Ações -->
+                <div class="results-actions" id="resultsActions">
+                    <button class="btn-primary btn-lg" id="btnInserirBanco">
+                        <span class="btn-icon">💾</span>
+                        Inserir Todos no Banco
+                    </button>
+                    <button class="btn-secondary btn-lg" id="btnExportarJSON">
+                        <span class="btn-icon">📥</span>
+                        Exportar JSON
+                    </button>
+                    <button class="btn-secondary btn-lg" id="btnNovoLote">
+                        <span class="btn-icon">📄</span>
+                        Novo Lote
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Mensagem de sucesso/erro da inserção -->
+        <section class="insert-result" id="insertResult" style="display: none;">
+            <div class="section-card" id="insertResultCard"></div>
+        </section>
+    </main>
+
+    <!-- Modal de Validacao -->
+    <div id="validationModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>⚠️ Campos Obrigatórios Faltando</h3>
+                <button class="modal-close" id="btnCloseValidation">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-subtitle">Alguns instrumentos precisam de informações manuais para serem salvos
+                    corretamente no Gocal:</p>
+                <div id="validationList" class="validation-list">
+                    <!-- Itens inseridos via JS -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="btnCancelValidation">Cancelar</button>
+                <button class="btn-primary" id="btnConfirmValidation">Salvar e Inserir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="{{ url_for('static', filename='js/validation_helper.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/processamento_lote.js') }}"></script>
+</body>
+
+</html>
