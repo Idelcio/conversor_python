@@ -852,6 +852,25 @@ body {
     font-weight: 500;
 }
 
+.info-input-edit {
+    font-size: 13px;
+    color: #1a1a2e;
+    font-weight: 500;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 4px 8px;
+    width: 100%;
+    background: #f9fafb;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.info-input-edit:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+    background: #fff;
+}
+
 /* Grandezas inside result card */
 .grandeza-block {
     background: #f9fafb;

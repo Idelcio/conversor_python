@@ -382,39 +382,39 @@
                     <span class="result-card-toggle" id="toggle-${idx}">▼</span>
                 </div>
             </div>
-            <div class="result-card-body" id="body-${idx}">
-                ${renderResultCardBody(inst)}
+            <div class="result-card-body visible" id="body-${idx}">
+                ${renderResultCardBody(inst, idx)}
             </div>
         </div>
         `;
     }
 
-    function renderResultCardBody(inst) {
+    function renderResultCardBody(inst, idx) {
         let html = '';
 
-        // Informações básicas
+        // Informações básicas (campos editáveis)
         html += `
         <div class="info-block">
-            <div class="info-block-title">Informações Básicas</div>
+            <div class="info-block-title">✏️ Informações Básicas <small style="font-weight:400;color:#888;">(editável antes de inserir)</small></div>
             <div class="info-grid">
-                ${infoItem('Identificação', inst.identificacao)}
-                ${infoItem('Nome', inst.nome)}
-                ${infoItem('Fabricante', inst.fabricante)}
-                ${infoItem('Modelo', inst.modelo)}
-                ${infoItem('Nº Série', inst.numero_serie)}
+                ${editableInfoItem('Identificação (Tag)', inst.identificacao, 'identificacao', idx)}
+                ${editableInfoItem('Nome', inst.nome, 'nome', idx)}
+                ${editableInfoItem('Fabricante', inst.fabricante, 'fabricante', idx)}
+                ${editableInfoItem('Modelo', inst.modelo, 'modelo', idx)}
+                ${editableInfoItem('Nº Série', inst.numero_serie, 'numero_serie', idx)}
                 ${infoItem('Descrição', inst.descricao)}
             </div>
         </div>`;
 
-        // Calibração
+        // Calibração (campos editáveis)
         html += `
         <div class="info-block">
-            <div class="info-block-title">Dados da Calibração</div>
+            <div class="info-block-title">📅 Dados da Calibração</div>
             <div class="info-grid">
-                ${infoItem('Data Calibração', inst.data_calibracao)}
+                ${editableInfoItem('Data Calibração', inst.data_calibracao, 'data_calibracao', idx)}
                 ${infoItem('Data Emissão', inst.data_emissao)}
-                ${infoItem('Validade', inst.validade || inst.data_proxima_calibracao)}
-                ${infoItem('Nº Certificado', inst.numero_certificado)}
+                ${editableInfoItem('Validade', inst.validade || inst.data_proxima_calibracao, 'validade', idx)}
+                ${editableInfoItem('Nº Certificado', inst.numero_certificado, 'numero_certificado', idx)}
                 ${infoItem('Laboratório', inst.laboratorio || inst.laboratorio_responsavel)}
                 ${infoItem('Motivo', inst.motivo_calibracao)}
             </div>
@@ -473,6 +473,29 @@
                 <span class="info-label">${label}</span>
                 <span class="info-value">${displayValue}</span>
             </div>`;
+    }
+
+    function editableInfoItem(label, value, fieldName, idx) {
+        const displayValue = (value && value !== 'n/i' && value !== 'N/I') ? value : '';
+        return `
+            <div class="info-item">
+                <span class="info-label">${label}</span>
+                <input class="info-input-edit"
+                       data-idx="${idx}"
+                       data-field="${fieldName}"
+                       value="${displayValue}"
+                       placeholder="—" />
+            </div>`;
+    }
+
+    function collectEditedValues() {
+        document.querySelectorAll('.info-input-edit').forEach(input => {
+            const idx = parseInt(input.dataset.idx);
+            const field = input.dataset.field;
+            if (!isNaN(idx) && field && extractedResults[idx] !== undefined) {
+                extractedResults[idx][field] = input.value.trim();
+            }
+        });
     }
 
     function getStatusClass(status) {
@@ -538,6 +561,9 @@
             }
         }
 
+        // Coleta edições feitas nos campos antes de inserir
+        collectEditedValues();
+
         // Se passar direto, insere
         executarInsercaoBanco();
     });
@@ -567,12 +593,19 @@
             const card = document.getElementById('insertResultCard');
 
             if (data.success) {
+                const calAdicionadas = data.calibracoes_adicionadas || 0;
+                const detalhes = [
+                    `${data.inseridos || 0} instrumento(s) novo(s)`,
+                    calAdicionadas > 0 ? `${calAdicionadas} calibração(ões) adicionada(s) a instrumento(s) existente(s)` : null,
+                    data.ignorados > 0 ? `${data.ignorados} duplicata(s) ignorada(s)` : null
+                ].filter(Boolean).join(' • ');
+
                 card.innerHTML = `
                     <div class="insert-success">
                         <div class="insert-success-icon">✅</div>
                         <div class="insert-success-text">
                             <h3>${data.message}</h3>
-                            <p>${data.inseridos || 0} inserido(s) • ${data.ignorados || 0} duplicata(s) ignorada(s)</p>
+                            <p>${detalhes}</p>
                         </div>
                     </div>`;
 

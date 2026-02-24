@@ -468,7 +468,11 @@ async function sendMessage() {
             const response = await fetch('/chat-mensagem', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: message })
+                body: JSON.stringify({
+                    message: message,
+                    user_id: currentUserId || '',
+                    funcionario_id: window.currentFuncionarioId || ''
+                })
             });
 
             const data = await response.json();
@@ -478,7 +482,6 @@ async function sendMessage() {
 
             // Navegação Real
             if (data.redirect_url) {
-                // Pequeno delay para o usuario ler a mensagem
                 setTimeout(() => {
                     window.parent.postMessage({ type: 'navigate', url: data.redirect_url }, '*');
                 }, 1000);
@@ -488,6 +491,11 @@ async function sendMessage() {
             if (data.auto_checklist) {
                 console.log("Aplicando checklist:", data.auto_checklist);
                 window.parent.postMessage({ type: 'fill_checklist', data: data.auto_checklist }, '*');
+            }
+
+            // Listagem/Filtro de Instrumentos
+            if (data.listar_instrumentos) {
+                await buscarEExibirInstrumentos(data.listar_instrumentos);
             }
         }
 
@@ -786,17 +794,31 @@ function addUserMessage(text) {
     scrollToBottom();
 }
 
-function addBotMessage(html) {
+function markdownToHtml(text) {
+    if (!text) return '';
+    // Nao converte se ja for HTML rico
+    if (text.includes('<table') || text.includes('<div style') || text.includes('<strong>')) return text;
+    return text
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/\n/g, '<br>');
+}
+
+function addBotMessage(html, isRaw) {
     const div = document.createElement('div');
     div.className = 'message bot';
 
+    // Converte markdown em texto simples; preserva HTML rico
+    const content = isRaw ? html : markdownToHtml(html);
+
     // Detecta se é HTML rico (preview de dados)
-    const isRichHTML = html.includes('INSTRUMENTO') || html.includes('border-radius') || html.includes('<div style');
+    const isRichHTML = content.includes('border-radius') || content.includes('<div style') || content.includes('<table');
     const contentClass = isRichHTML ? 'message-content rich-html' : 'message-content';
 
     div.innerHTML = `
                 <div class="avatar">🤖</div>
-                <div class="${contentClass}">${html}</div>
+                <div class="${contentClass}">${content}</div>
             `;
     chatMessages.appendChild(div);
     scrollToBottom();
@@ -1485,3 +1507,59 @@ styleJSON.innerHTML = `
     .avatar { width: 28px !important; height: 28px !important; font-size: 16px !important; }
 `;
 document.head.appendChild(styleJSON);
+
+// ==========================================
+// BUSCAR E EXIBIR INSTRUMENTOS (Chat Filtro)
+// ==========================================
+
+async function buscarEExibirInstrumentos(filtros) {
+    const userId = window.gocalUserId || '';
+    const params = new URLSearchParams({ user_id: userId });
+    if (filtros.termo)           params.append('termo', filtros.termo);
+    if (filtros.status)          params.append('status', filtros.status);
+    if (filtros.filtro_vencidos) params.append('filtro_vencidos', '1');
+    if (filtros.filtro_a_vencer) params.append('filtro_a_vencer', '1');
+
+    let html = '';
+    try {
+        const resp = await fetch(`/buscar-instrumentos?${params.toString()}`);
+        const data = await resp.json();
+
+        if (!data.success || !data.items || data.items.length === 0) {
+            html = `<span style="color:#888;">Nenhum instrumento encontrado com esses filtros.</span>`;
+        } else {
+            const statusLabel = { 'ok': '✅ OK', 'a_vencer': '⚠️ A vencer', 'vencido': '🔴 Vencido' };
+            html += `<div style="font-size:12px;"><strong>${data.items.length} instrumento(s) encontrado(s):</strong><br><br>`;
+            html += `<table style="width:100%;border-collapse:collapse;font-size:11.5px;">`;
+            html += `<tr style="background:#f0f0f0;"><th style="text-align:left;padding:4px 6px;">Tag</th><th style="text-align:left;padding:4px 6px;">Instrumento</th><th style="text-align:left;padding:4px 6px;">Status</th><th style="text-align:left;padding:4px 6px;">Próx. Calib.</th></tr>`;
+            data.items.forEach((item, i) => {
+                const bg = i % 2 === 0 ? '#fff' : '#fafafa';
+                const st = statusLabel[item.status] || item.status || '-';
+                const proxData = item.proxima_calibracao || '-';
+                html += `<tr style="background:${bg};">`;
+                html += `<td style="padding:3px 6px;">${item.tag || '-'}</td>`;
+                html += `<td style="padding:3px 6px;">${item.nome || '-'}</td>`;
+                html += `<td style="padding:3px 6px;">${st}</td>`;
+                html += `<td style="padding:3px 6px;">${proxData}</td>`;
+                html += `</tr>`;
+            });
+            html += `</table></div>`;
+
+            // Notifica o Laravel pai (para filtrar o monitoramento no futuro)
+            window.parent.postMessage({
+                type: 'filter_monitoramento',
+                params: {
+                    termo: filtros.termo || '',
+                    status: filtros.status || '',
+                    filtro_vencidos: filtros.filtro_vencidos ? '1' : '0',
+                    filtro_a_vencer: filtros.filtro_a_vencer ? '1' : '0'
+                }
+            }, '*');
+        }
+    } catch (e) {
+        html = `<span style="color:#c00;">Erro ao buscar instrumentos.</span>`;
+        console.error('buscarEExibirInstrumentos error:', e);
+    }
+
+    addBotMessage(html, true);
+}

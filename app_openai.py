@@ -134,7 +134,20 @@ def processamento_lote():
     """Pagina de processamento em lote de PDFs"""
     user_id = request.args.get('user_id') or session.get('gocal_user_id', '')
     funcionario_id = request.args.get('funcionario_id') or session.get('gocal_funcionario_id', '')
-    return render_template('processamento_lote.html', user_id=user_id, funcionario_id=funcionario_id)
+    user_name = ''
+    if user_id:
+        try:
+            conn = mysql.connector.connect(**DB_CONFIG)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM users WHERE id = %s LIMIT 1", (user_id,))
+            row = cursor.fetchone()
+            if row:
+                user_name = row[0]
+            cursor.close()
+            conn.close()
+        except Exception:
+            pass
+    return render_template('processamento_lote.html', user_id=user_id, funcionario_id=funcionario_id, user_name=user_name)
 
 
 # ============================================================
@@ -295,9 +308,11 @@ def chat_mensagem():
     session_id = session['session_id']
     data = request.get_json()
     message = data.get('message', '')
-    
-    print(f"[CHAT-MSG] Session: {session_id[:8]}... Msg: {message}")
-    
+    req_user_id = data.get('user_id') or session.get('gocal_user_id') or ''
+    req_funcionario_id = data.get('funcionario_id') or session.get('gocal_funcionario_id') or ''
+
+    print(f"[CHAT-MSG] Session: {session_id[:8]}... Msg: {message} | user_id={req_user_id}")
+
     dados = extracted_cache.get(session_id, [])
 
     # Se usuario pedir explicitamente para ver os dados completos
@@ -317,12 +332,45 @@ def chat_mensagem():
     # Chat normal com GPT-4o
     try:
         contexto = ""
+
+        # Carrega instrumentos do banco para o contexto do chat
+        if req_user_id:
+            try:
+                conn_ctx = mysql.connector.connect(**DB_CONFIG)
+                cur_ctx = conn_ctx.cursor(dictionary=True)
+                cur_ctx.execute("""
+                    SELECT i.identificacao AS tag, i.nome, i.status, i.descricao,
+                           c.data_calibracao, c.data_proxima_calibracao,
+                           c.laboratorio_responsavel, c.numero_calibracao
+                    FROM instrumentos i
+                    LEFT JOIN calibracoes c ON c.id = (
+                        SELECT id FROM calibracoes WHERE instrumento_id = i.id
+                        ORDER BY data_calibracao DESC LIMIT 1
+                    )
+                    WHERE i.user_id = %s
+                    ORDER BY i.identificacao
+                    LIMIT 200
+                """, (req_user_id,))
+                instrumentos_db = cur_ctx.fetchall()
+                cur_ctx.close()
+                conn_ctx.close()
+
+                if instrumentos_db:
+                    for row in instrumentos_db:
+                        for k in ['data_calibracao', 'data_proxima_calibracao']:
+                            if row.get(k):
+                                row[k] = str(row[k])
+                    db_json = json.dumps(instrumentos_db, ensure_ascii=False, indent=2)
+                    contexto += f"\n\nINSTRUMENTOS NO BANCO DE DADOS (total: {len(instrumentos_db)}):\n{db_json}"
+            except Exception as e_ctx:
+                print(f"[CHAT-MSG] Erro ao carregar contexto do banco: {e_ctx}")
+
         if dados:
             # Limita o contexto para nao estourar tokens se for muito grande
             json_str = json.dumps(dados, ensure_ascii=False, indent=2)
-            if len(json_str) > 20000:
-                json_str = json_str[:20000] + "... (troncado)"
-            contexto = f"\n\nDADOS DO DOCUMENTO (Contexto):\n{json_str}"
+            if len(json_str) > 10000:
+                json_str = json_str[:10000] + "... (troncado)"
+            contexto += f"\n\nDADOS DO DOCUMENTO (PDF atual em sessão):\n{json_str}"
 
         # Rotas mapeadas da aplicacao
         APP_ROUTES = {
@@ -341,9 +389,10 @@ def chat_mensagem():
             "Favoritos": "/favoritos",
         }
 
-        prompt = f"""Voce e o Metron (Assistente Labster).
-        
-DADOS ANEXADOS:
+        prompt = f"""Voce e o Metron, assistente do sistema Gocal/Labster de gestao de instrumentos de medicao.
+
+IMPORTANTE: Voce SOMENTE pode falar sobre dados do usuario autenticado (user_id={req_user_id or 'NAO IDENTIFICADO'}).
+Nunca revele nem use dados de outros usuarios. Se nao houver user_id, recuse consultas ao banco.
 {contexto}
 
 ROTAS DA APLICACAO (Use se o usuario pedir para ir):
@@ -352,11 +401,18 @@ ROTAS DA APLICACAO (Use se o usuario pedir para ir):
 USUARIO: "{message}"
 
 INSTRUCOES:
-1. Responda a pergunta do usuario com base nos dados.
-2. Se o usuario pedir para NAVEGAR para alguma tela (ex: "ir para instrumentos"), sua resposta DEVE SER um JSON puro no formato: 
+1. Se o usuario pedir para NAVEGAR para alguma tela (ex: "ir para instrumentos"), retorne APENAS este JSON:
    {{"message": "Indo para instrumentos...", "navigate_to": "/instrumentos"}}
-3. Se for uma pergunta normal, responda apenas texto.
-4. NAO use JSON se nao for navegacao.
+
+2. Se o usuario fizer QUALQUER pergunta sobre instrumentos cadastrados — seja para listar, ver, contar, filtrar por tipo, status, vencimento, etc. (ex: "quantos micrometros temos?", "mostre os paquimetros", "quais estao em revisao", "instrumentos vencidos", "ver calibracoes a vencer") — retorne APENAS este JSON puro, sem nenhum texto antes ou depois:
+   {{"message": "Buscando instrumentos...", "listar_instrumentos": {{"termo": "micrometro", "status": "", "filtro_vencidos": false, "filtro_a_vencer": false}}}}
+   - Use "termo" para filtrar por tipo/nome (ex: "micrometro", "paquimetro", "termometro"). Deixe vazio para todos.
+   - Use "status" EXATAMENTE um destes valores (com acento correto): "Aprovado", "Reprovado", "Inativo", "Em Calibração", "Em Manutenção", "Em Revisão", "Sem Calibração", "Pendente Aprovação". Deixe vazio para todos os status.
+   - Use "filtro_vencidos": true para instrumentos com calibracao vencida
+   - Use "filtro_a_vencer": true para instrumentos que vencem nos proximos 30 dias
+   - CRITICO: retorne SOMENTE o JSON, sem explicacao, sem introducao, sem texto adicional
+
+3. Para qualquer outra pergunta (sobre o sistema, como usar, etc.), responda em texto normal.
 """
 
         if hasattr(extractor, 'ask'):
@@ -383,7 +439,13 @@ INSTRUCOES:
         try:
             # Limpa backticks se a IA colocou ```json ... ```
             clean_resp = resposta.replace('```json', '').replace('```', '').strip()
-            
+
+            # Extrai JSON mesmo se vier com texto antes (ex: "Aqui está: {...}")
+            import re as _re
+            json_match = _re.search(r'\{.*\}', clean_resp, _re.DOTALL)
+            if json_match:
+                clean_resp = json_match.group(0)
+
             # Tenta carregar como JSON
             if clean_resp.startswith('{'):
                 resp_json = json.loads(clean_resp)
@@ -403,6 +465,18 @@ INSTRUCOES:
                         'message': resp_json.get('message', 'Checklist verificado!'),
                         'auto_checklist': resp_json['checklist_data']
                     })
+
+                # Caso 3: Listar/Filtrar Instrumentos
+                if 'listar_instrumentos' in resp_json:
+                    filtros = resp_json['listar_instrumentos']
+                    # SEGURANÇA: usa apenas o user_id da requisição autenticada
+                    uid = req_user_id or session.get('gocal_user_id') or ''
+                    texto_resultado = _buscar_instrumentos_texto(uid, filtros)
+                    return jsonify({
+                        'success': True,
+                        'message': texto_resultado,
+                        'token_usage': extractor.token_usage if extractor else {}
+                    })
         except:
             pass # Nao e JSON, segue normal
 
@@ -416,6 +490,129 @@ INSTRUCOES:
 
         print(f"[ERRO] Chat Msg: {e}")
         return jsonify({'success': False, 'message': f'Erro técnico: {error_msg}'})
+
+
+def _buscar_instrumentos_texto(user_id, filtros):
+    """Consulta o banco e retorna resposta formatada em texto para o chat.
+    SEGURANÇA: sempre filtra por user_id — nunca retorna dados de outro usuário."""
+    if not user_id:
+        return "Não foi possível identificar o usuário. Faça login novamente."
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor(dictionary=True)
+
+        termo = (filtros.get('termo') or '').strip()
+        status = (filtros.get('status') or '').strip()
+        filtro_vencidos = bool(filtros.get('filtro_vencidos'))
+        filtro_a_vencer = bool(filtros.get('filtro_a_vencer'))
+
+        sql = """
+            SELECT i.identificacao, i.nome, i.status,
+                   c.data_proxima_calibracao
+            FROM instrumentos i
+            LEFT JOIN calibracoes c ON c.id = (
+                SELECT id FROM calibracoes WHERE instrumento_id = i.id ORDER BY data_calibracao DESC LIMIT 1
+            )
+            WHERE i.user_id = %s
+        """
+        params = [user_id]
+
+        if termo:
+            sql += " AND (i.identificacao LIKE %s OR i.nome LIKE %s OR i.descricao LIKE %s)"
+            params += [f'%{termo}%', f'%{termo}%', f'%{termo}%']
+
+        if status:
+            sql += " AND i.status = %s"
+            params.append(status)
+
+        if filtro_vencidos:
+            sql += " AND c.data_proxima_calibracao <= CURDATE()"
+
+        if filtro_a_vencer:
+            sql += " AND c.data_proxima_calibracao BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)"
+
+        sql += " ORDER BY i.identificacao LIMIT 50"
+
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        if not rows:
+            return "Nenhum instrumento encontrado com esses filtros."
+
+        linhas = [f"Encontrei **{len(rows)}** instrumento(s):\n"]
+        for r in rows:
+            prox = str(r['data_proxima_calibracao']) if r.get('data_proxima_calibracao') else 'sem data'
+            linhas.append(f"• **{r['identificacao']}** — {r['nome']} | {r['status']} | Próx. calib.: {prox}")
+
+        return "\n".join(linhas)
+
+    except Exception as e:
+        print(f"[ERRO] _buscar_instrumentos_texto: {e}")
+        return "Erro ao buscar instrumentos no banco de dados."
+
+
+@app.route('/buscar-instrumentos', methods=['GET'])
+def buscar_instrumentos():
+    """Busca instrumentos com filtros para o chat"""
+    user_id = request.args.get('user_id') or session.get('gocal_user_id')
+    if not user_id:
+        return jsonify({'success': False, 'items': [], 'message': 'Usuário não identificado.'})
+
+    termo = request.args.get('termo', '').strip()
+    status = request.args.get('status', '').strip()
+    filtro_vencidos = request.args.get('filtro_vencidos', '0') == '1'
+    filtro_a_vencer = request.args.get('filtro_a_vencer', '0') == '1'
+
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+            SELECT i.id, i.identificacao, i.nome, i.status,
+                   c.data_calibracao, c.data_proxima_calibracao, c.status_calibracao,
+                   c.laboratorio_responsavel
+            FROM instrumentos i
+            LEFT JOIN calibracoes c ON c.id = (
+                SELECT id FROM calibracoes WHERE instrumento_id = i.id ORDER BY data_calibracao DESC LIMIT 1
+            )
+            WHERE i.user_id = %s
+        """
+        params = [user_id]
+
+        if termo:
+            sql += " AND (i.identificacao LIKE %s OR i.nome LIKE %s OR i.descricao LIKE %s)"
+            params += [f'%{termo}%', f'%{termo}%', f'%{termo}%']
+
+        if status:
+            sql += " AND i.status = %s"
+            params.append(status)
+
+        if filtro_vencidos:
+            sql += " AND c.data_proxima_calibracao <= CURDATE()"
+
+        if filtro_a_vencer:
+            sql += " AND c.data_proxima_calibracao BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)"
+
+        sql += " ORDER BY i.identificacao LIMIT 50"
+
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        # Formata datas
+        for r in rows:
+            for k in ['data_calibracao', 'data_proxima_calibracao']:
+                if r.get(k):
+                    r[k] = str(r[k])
+
+        return jsonify({'success': True, 'items': rows, 'total': len(rows)})
+
+    except Exception as e:
+        print(f"[ERRO] buscar-instrumentos: {e}")
+        return jsonify({'success': False, 'items': [], 'message': str(e)})
 
 
 @app.route('/limpar-cache', methods=['POST'])
@@ -674,6 +871,7 @@ def inserir_banco():
         total_inseridos = 0
         total_ignorados = 0
         total_grandezas = 0
+        total_calibracoes_adicionadas = 0
         instrumentos_inseridos = []  # Para retornar IDs e dados de calibracao
 
         for inst in instrumentos:
@@ -700,17 +898,91 @@ def inserir_banco():
 
             # Tenta encontrar campos chaves em qualquer lugar
             identificacao = buscar_valor('identificacao', inst) or \
-                            buscar_valor('numero_certificado', inst) or \
+                            buscar_valor('autenticacao', inst) or \
                             buscar_valor('tag', inst) or \
-                            buscar_valor('codigo', inst) or 'n/i'
+                            buscar_valor('codigo', inst) or \
+                            buscar_valor('patrimonio', inst) or \
+                            buscar_valor('numero_certificado', inst) or 'n/i'
 
-            # Verifica duplicata
+            # Verifica se instrumento já existe
             cursor.execute(
                 "SELECT id FROM instrumentos WHERE identificacao = %s AND user_id = %s LIMIT 1",
                 (identificacao, user_id)
             )
-            if cursor.fetchone():
-                total_ignorados += 1
+            existente = cursor.fetchone()
+            if existente:
+                instrumento_id_existente = existente[0]
+                # Extrai dados da calibração do PDF
+                data_calib_dup = buscar_valor('data_calibracao', inst)
+                numero_cert_dup = buscar_valor('numero_certificado', inst) or identificacao
+                laboratorio_dup = buscar_valor('laboratorio', inst) or buscar_valor('laboratorio_responsavel', inst) or 'N/I'
+                validade_dup = buscar_valor('validade', inst) or buscar_valor('data_proxima_calibracao', inst)
+                motivo_dup = buscar_valor('motivo_calibracao', inst, 'Calibração Periódica') or 'Calibração Periódica'
+                status_dup = normalizar_status(buscar_valor('status', inst)) or 'Em Revisão'
+
+                # Verifica se já existe calibração com mesmo número de certificado E mesma data
+                print(f"[DEBUG] Instrumento existente id={instrumento_id_existente}, numero_cert='{numero_cert_dup}', data_calib='{data_calib_dup}'")
+                cursor.execute(
+                    "SELECT id FROM calibracoes WHERE instrumento_id = %s AND numero_calibracao = %s AND data_calibracao = %s LIMIT 1",
+                    (instrumento_id_existente, numero_cert_dup, data_calib_dup)
+                )
+                dup_calib = cursor.fetchone()
+                print(f"[DEBUG] Calibracao duplicada encontrada: {dup_calib}")
+                if dup_calib:
+                    total_ignorados += 1
+                    continue
+
+                # Instrumento existe mas calibração é nova — insere só a calibração
+                try:
+                    sql_cal_dup = """
+                        INSERT INTO calibracoes (
+                            user_id, responsavel_cadastro_id, instrumento_id,
+                            numero_calibracao, sufixo,
+                            laboratorio_responsavel, motivo_calibracao,
+                            data_calibracao, data_proxima_calibracao,
+                            status_calibracao, status_instrumento,
+                            created_at, updated_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                    """
+                    cursor.execute(sql_cal_dup, (
+                        user_id, user_id, instrumento_id_existente,
+                        numero_cert_dup, '',
+                        laboratorio_dup, motivo_dup,
+                        data_calib_dup, validade_dup,
+                        'Em Revisão', status_dup
+                    ))
+                    calibracao_id_dup = cursor.lastrowid
+                    print(f"[DB] Calibracao #{calibracao_id_dup} adicionada ao instrumento existente #{instrumento_id_existente}")
+
+                    # Salva PDF se existir
+                    pdf_base64_dup = inst.get('_pdf_base64')
+                    pdf_filename_dup = inst.get('_pdf_filename', 'certificado.pdf')
+                    if calibracao_id_dup and pdf_base64_dup:
+                        try:
+                            import hashlib, time
+                            hash_name = hashlib.md5(f"{time.time()}_{pdf_filename_dup}".encode()).hexdigest()
+                            cursor.execute("""
+                                INSERT INTO certificados (
+                                    calibracao_id, arquivo_pdf, nome_original,
+                                    pdf_content, pdf_in_database,
+                                    created_at, updated_at
+                                ) VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
+                            """, (calibracao_id_dup, f"certificados/{hash_name}.pdf", pdf_filename_dup, pdf_base64_dup, 1))
+                        except Exception as e_pdf_dup:
+                            print(f"[AVISO] Erro ao salvar PDF para calibracao #{calibracao_id_dup}: {e_pdf_dup}")
+
+                    instrumentos_inseridos.append({
+                        'instrumento_id': instrumento_id_existente,
+                        'calibracao_id': calibracao_id_dup,
+                        'numero_calibracao': numero_cert_dup,
+                        'data_calibracao': data_calib_dup,
+                        'laboratorio_responsavel': laboratorio_dup,
+                        'motivo_calibracao': motivo_dup
+                    })
+                    total_calibracoes_adicionadas += 1
+                except Exception as e_cal_dup:
+                    print(f"[AVISO] Erro ao adicionar calibracao a instrumento existente: {e_cal_dup}")
+                    total_ignorados += 1
                 continue
             
             # Mapeia campos principais procurando recursivamente ou usando defaults
@@ -907,6 +1179,8 @@ def inserir_banco():
             del extracted_cache[session_id]
 
         msg = f'Inseridos {total_inseridos} instrumento(s)!'
+        if total_calibracoes_adicionadas > 0:
+            msg += f' ({total_calibracoes_adicionadas} calibração(ões) adicionada(s) a instrumento(s) existente(s))'
         if total_ignorados > 0:
             msg += f' ({total_ignorados} duplicata(s) ignorada(s))'
 
@@ -915,6 +1189,7 @@ def inserir_banco():
             'message': msg,
             'inseridos': total_inseridos,
             'ignorados': total_ignorados,
+            'calibracoes_adicionadas': total_calibracoes_adicionadas,
             'grandezas': total_grandezas,
             'instrumentos_inseridos': instrumentos_inseridos
         })

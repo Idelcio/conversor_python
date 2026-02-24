@@ -45,8 +45,8 @@ class OpenAIExtractor:
             for page_num in range(num_pages):
                 page = doc[page_num]
                 
-                # Renderiza em resolução otimizada (150 DPI - equilibrio qualidade/tokens)
-                pix = page.get_pixmap(dpi=150)
+                # Renderiza em resolução otimizada (300 DPI)
+                pix = page.get_pixmap(dpi=300)
                 img_bytes = pix.tobytes("png")
                 
                 # Converte para base64

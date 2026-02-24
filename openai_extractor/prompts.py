@@ -76,7 +76,7 @@ EXTRACTION_SCHEMA = {
     "type": "object",
     "properties": {
         # LINHA 1
-        "identificacao": {"type": "string", "description": "Tag ou código do instrumento"},
+        "identificacao": {"type": "string", "description": "Tag ou código do instrumento. Em certificados brasileiros pode aparecer como 'Autenticação', 'Tag', 'Código', 'ID' ou 'Identificação'. Priorize esse campo sobre o número do certificado."},
         "nome": {"type": "string", "description": "Nome do equipamento"},
         
         # LINHA 2
@@ -169,7 +169,7 @@ INSTRUCOES:
 2. Siga estritamente este formato de chaves:
 
 {
-    "identificacao": "Numero do certificado ou Codigo de Identificacao (Tag)",
+    "identificacao": "Codigo de identificacao do instrumento (Tag/Patrimonio). PRIORIDADE: busque pelos rotulos 'Autenticacao', 'Tag', 'Codigo', 'Patrimonio', 'ID Instrumento'. Se nao existir, use o numero do certificado como fallback.",
     "nome": "Nome do instrumento (ex: Paquimetro, Micrometro)",
     "fabricante": "Fabricante do instrumento",
     "modelo": "Modelo",
