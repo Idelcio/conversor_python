@@ -58,6 +58,9 @@ temp/
 .env
 .env.local
 
+# Credenciais VPS (não commitar!)
+ACESSO_VPS.md
+
 # Uploads (arquivos temporários)
 uploads/
 *.pdf

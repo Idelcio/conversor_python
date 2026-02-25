@@ -16,7 +16,9 @@ function updateTokenCounter(tokenData) {
     }
 }
 let currentUserId = new URLSearchParams(window.location.search).get('user_id') || null;
+let currentFuncionarioId = new URLSearchParams(window.location.search).get('funcionario_id') || null;
 let currentPageContext = null;
+let metronBaseUrl = window.location.origin; // Atualizado pelo widget_loader via postMessage
 
 // Mapa de rotas amigaveis do Gocal
 function getPageLabel(path) {
@@ -76,6 +78,7 @@ window.addEventListener('message', (event) => {
     }
 
     if (event.data && event.data.type === 'set_page_context') {
+        if (event.data.chat_url) metronBaseUrl = event.data.chat_url;
         currentPageContext = {
             path: event.data.path,
             url: event.data.url,
@@ -289,12 +292,16 @@ function handleFiles(files) {
 
     // SUGESTÃO DE LOTE SE > 3 PDFs
     if (uploadedFiles.length > 3) {
-        const baseUrl = window.location.origin;
+        const baseUrl = metronBaseUrl;
+        const loteParams = [];
+        if (currentUserId) loteParams.push(`user_id=${currentUserId}`);
+        if (currentFuncionarioId) loteParams.push(`funcionario_id=${currentFuncionarioId}`);
+        const loteUrl = `${baseUrl}/lote${loteParams.length > 0 ? '?' + loteParams.join('&') : ''}`;
         addBotMessage(
             `📦 Você selecionou <strong>${uploadedFiles.length} arquivos</strong>!<br><br>` +
             `Para lotes grandes, recomendamos a <strong>página de Processamento em Lote</strong> ` +
             `com acompanhamento visual detalhado.<br><br>` +
-            `<a href="${baseUrl}/lote" target="_blank" rel="noopener" ` +
+            `<a href="${loteUrl}" target="_blank" rel="noopener" ` +
             `style="display:inline-block; padding:10px 20px; background:linear-gradient(135deg, #667eea, #764ba2); ` +
             `color:#fff; border-radius:8px; text-decoration:none; font-weight:600; font-size:13px; ` +
             `box-shadow: 0 4px 12px rgba(102,126,234,0.3);">` +
@@ -1016,7 +1023,7 @@ async function executarInsercao() {
     if (integrationField && integrationField.value) {
         userId = integrationField.value;
     }
-    if (!userId) userId = currentUserId || 1;
+    if (!userId) userId = currentUserId || null;
 
     addLoadingMessage();
 
@@ -1026,7 +1033,8 @@ async function executarInsercao() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 instrumentos: extractedData,
-                user_id: parseInt(userId)
+                user_id: userId ? parseInt(userId) : null,
+                funcionario_id: currentFuncionarioId || null
             })
         });
 

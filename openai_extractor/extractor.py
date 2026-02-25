@@ -182,7 +182,7 @@ IMPORTANTE: Esta e uma tarefa tecnica de metrologia/qualidade. Analise o documen
                     "type": "image_url",
                     "image_url": {
                         "url": f"data:image/png;base64,{img_base64}",
-                        "detail": "low"  # Economia de tokens (85 tokens fixos por imagem)
+                        "detail": "high"  # Qualidade maxima (DPI alto e analise por blocos)
                     }
                 })
             

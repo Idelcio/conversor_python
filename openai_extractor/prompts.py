@@ -18,6 +18,11 @@ DIRETRIZES DE INTERAÇÃO (IMPORTANTE):
    - Você DEVE responder a **cumprimentos e gentilezas** (Oi, Olá, Bom dia, Obrigado) de forma educada e breve.
    - Você DEVE executar comandos de **Navegação** (ir para tela X) e **Listagem** (mostrar meus instrumentos).
    
+3. **LEITURA MINUCIOSA E CAUTELOSA**: 
+   - Você deve ler o documento com extrema cautela, conferindo cada número e letra.
+   - Não assuma valores; se estiver em dúvida entre dois campos similares, use o contexto das seções (ex: seção de Identificação vs seção de Cabeçalho).
+   - Priorize a análise técnica e lógica sobre a OCR básica.
+
 2. **CHECKLIST DE VALIDAÇÃO (Quando solicitado)**:
    Se o usuário pedir para verificar/conferir checklist, analise o documento e GERE UM JSON (sem markdown) no seguinte formato:
    {
@@ -76,8 +81,8 @@ EXTRACTION_SCHEMA = {
     "type": "object",
     "properties": {
         # LINHA 1
-        "identificacao": {"type": "string", "description": "Tag ou código do instrumento. Em certificados brasileiros pode aparecer como 'Autenticação', 'Tag', 'Código', 'ID' ou 'Identificação'. Priorize esse campo sobre o número do certificado."},
-        "nome": {"type": "string", "description": "Nome do equipamento"},
+        "identificacao": {"type": "string", "description": "Tag ou código do instrumento. Procure por rótulos como 'Autenticação', 'Tag', 'Código', 'ID'. Priorize a identificação específica do instrumento."},
+        "nome": {"type": "string", "description": "Nome do equipamento (ex: Multímetro, Paquímetro)."},
         
         # LINHA 2
         "tipo_familia": {"type": "string", "description": "Tipo ou família do instrumento"},
@@ -110,6 +115,7 @@ EXTRACTION_SCHEMA = {
         "data_calibracao": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
         "data_emissao": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
         "data_recebimento": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
+        "numero_certificado": {"type": "string", "description": "Número do certificado de calibração. Procure por 'Certificado de Calibração', 'Certificado nº', 'Folha nº'."},
         
         # Extras
         "local_calibracao": {"type": ["string", "null"]},
@@ -169,8 +175,8 @@ INSTRUCOES:
 2. Siga estritamente este formato de chaves:
 
 {
-    "identificacao": "Codigo de identificacao do instrumento (Tag/Patrimonio). PRIORIDADE: busque pelos rotulos 'Autenticacao', 'Tag', 'Codigo', 'Patrimonio', 'ID Instrumento'. Se nao existir, use o numero do certificado como fallback.",
-    "nome": "Nome do instrumento (ex: Paquimetro, Micrometro)",
+    "identificacao": "Codigo de identificacao (Tag/Patrimonio). REGRA: Identifique o campo que representa a TAG do instrumento (codigo interno de identificacao). Normalmente aparece na seção 'Identificação do Instrumento' e, neste laboratório, é o valor após o rótulo 'Autenticação'. Priorize este campo sobre o numero do certificado.",
+    "nome": "Nome do instrumento (ex: Paquimetro, Micrometro). Procure pelo nome principal do equipamento no certificado.",
     "fabricante": "Fabricante do instrumento",
     "modelo": "Modelo",
     "numero_serie": "Numero de serie",
@@ -179,6 +185,7 @@ INSTRUCOES:
     "data_calibracao": "YYYY-MM-DD",
     "validade": "YYYY-MM-DD (se houver)",
     "periodicidade": "meses (numero)",
+    "numero_certificado": "Numero unico do certificado de calibracao. Normalmente no cabecalho ou em destaque como 'Certificado nº' ou 'Folha'.",
     
     "departamento": "Cliente/Departamento",
     "responsavel": "Tecnico responsavel/Signatario",

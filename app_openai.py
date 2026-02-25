@@ -381,9 +381,6 @@ def chat_mensagem():
             "Novo Instrumento": "/instrumentos/create",
             "Laboratorios": "/laboratorios",
             "Listar Laboratorios": "/laboratorios",
-            "Calibracoes": "/calibracoes",
-            "Listar Calibracoes": "/calibracoes",
-            "Nova Calibracao": "/calibracoes/create", 
             "Perfil": "/profile",
             "Assinatura": "/profile/signature",
             "Favoritos": "/favoritos",
@@ -401,6 +398,8 @@ ROTAS DA APLICACAO (Use se o usuario pedir para ir):
 USUARIO: "{message}"
 
 INSTRUCOES:
+0. BLOQUEIO DE NAVEGACAO: Se o usuario pedir para ir, abrir, acessar ou navegar para a pagina de calibracoes OU movimentos, NAO execute a navegacao. Responda APENAS em texto, de forma sutil e amigavel, algo como: "Essa navegação ainda não está disponível pelo chat, mas você pode acessar pelo menu do sistema normalmente. 😊" — sem JSON, sem navigate_to.
+
 1. Se o usuario pedir para NAVEGAR para alguma tela (ex: "ir para instrumentos"), retorne APENAS este JSON:
    {{"message": "Indo para instrumentos...", "navigate_to": "/instrumentos"}}
 
@@ -799,45 +798,40 @@ def normalizar_status(valor):
     if not valor:
         return 'Em Revisão'
     
-    v = valor.lower().strip()
+def normalizar_data(data_str):
+    """Converte DD/MM/YYYY ou similar para YYYY-MM-DD"""
+    if not data_str or not isinstance(data_str, str) or data_str.lower() in ['n/i', 'n/a', '---', '']:
+        return None
     
-    # Mapa de correlações
-    if 'pendente' in v or 'aprovacao' in v:
-        return 'Pendente Aprovação'
-    if 'inativo' in v:
-        return 'Inativo'
-    if 'manutencao' in v:
-        return 'Em Manutenção'
-    if 'sem' in v: 
-        return 'Sem Calibração'
-    if 'em calibracao' in v:
-        return 'Em Calibração'
+    import re
+    # Tenta DD/MM/YYYY
+    match = re.search(r'(\d{2})[/-](\d{2})[/-](\d{4})', data_str)
+    if match:
+        day, month, year = match.groups()
+        return f"{year}-{month}-{day}"
+    
+    # Tenta YYYY-MM-DD
+    match = re.search(r'(\d{4})[/-](\d{2})[/-](\d{2})', data_str)
+    if match:
+        year, month, day = match.groups()
+        return f"{year}-{month}-{day}"
         
-    # Default
-    return 'Em Revisão'
+    return data_str # Retorna original se nao bater
 
 @app.route('/inserir-banco', methods=['POST'])
 def inserir_banco():
     """Insere instrumentos extraidos no MySQL"""
     try:
         data = request.get_json()
-        user_id = int(data.get('user_id', 1))
-        funcionario_id = data.get('funcionario_id')
-        if funcionario_id:
-            try:
-                funcionario_id = int(funcionario_id)
-            except:
-                funcionario_id = None
-        else:
-            funcionario_id = None
+        raw_uid = data.get('user_id')
+        user_id = int(raw_uid) if raw_uid else int(session.get('gocal_user_id') or 1)
+        raw_fid = data.get('funcionario_id')
+        funcionario_id = int(raw_fid) if raw_fid else (int(session.get('gocal_funcionario_id')) if session.get('gocal_funcionario_id') else None)
 
         if 'session_id' not in session:
-            # Em modo widget/iframe, a sessao pode se perder. 
-            # Aceitamos a insercao se vier com dados validos mesmo sem sessao.
             pass
 
-        # session_id = session['session_id'] # Nao obrigatorio
-        session_id = session.get('session_id') # Usa .get para evitar erro se nao existir
+        session_id = session.get('session_id')
         
         # Prioriza os dados enviados pelo frontend
         instrumentos = data.get('instrumentos', [])
@@ -914,7 +908,13 @@ def inserir_banco():
                 instrumento_id_existente = existente[0]
                 # Extrai dados da calibração do PDF
                 data_calib_dup = buscar_valor('data_calibracao', inst)
-                numero_cert_dup = buscar_valor('numero_certificado', inst) or identificacao
+                # PRIORIDADE TOTAL para numero_certificado
+                numero_cert_dup = buscar_valor('numero_certificado', inst) or \
+                                  buscar_valor('numero_calibracao', inst) or \
+                                  identificacao
+                
+                print(f"[DEBUG] Extraido para calibração: cert={numero_cert_dup}, tag={identificacao}")
+
                 laboratorio_dup = buscar_valor('laboratorio', inst) or buscar_valor('laboratorio_responsavel', inst) or 'N/I'
                 validade_dup = buscar_valor('validade', inst) or buscar_valor('data_proxima_calibracao', inst)
                 motivo_dup = buscar_valor('motivo_calibracao', inst, 'Calibração Periódica') or 'Calibração Periódica'
@@ -948,7 +948,7 @@ def inserir_banco():
                         user_id, user_id, instrumento_id_existente,
                         numero_cert_dup, '',
                         laboratorio_dup, motivo_dup,
-                        data_calib_dup, validade_dup,
+                        normalizar_data(data_calib_dup), normalizar_data(validade_dup),
                         'Em Revisão', status_dup
                     ))
                     calibracao_id_dup = cursor.lastrowid
@@ -993,8 +993,8 @@ def inserir_banco():
             numero_serie = buscar_valor('numero_serie', inst) or buscar_valor('serie', inst) or 'N/I'
             descricao = buscar_valor('descricao', inst) or json.dumps(inst, ensure_ascii=False)[:500]
             periodicidade = buscar_valor('periodicidade', inst, 12)
-            departamento = buscar_valor('departamento', inst) or buscar_valor('cliente', inst) or buscar_valor('localizacao', inst) or 'N/I'
-            responsavel = buscar_valor('responsavel', inst) or buscar_valor('solicitante', inst) or 'N/I'
+            departamento = ""
+            responsavel = str(user_id)
             # Default Status Instrumento: "Em Revisão"
             status = normalizar_status(buscar_valor('status', inst)) or 'Em Revisão'
             tipo_familia = buscar_valor('tipo_familia', inst) or buscar_valor('tipo_documento', inst) or 'N/I'
@@ -1042,11 +1042,17 @@ def inserir_banco():
                 print(f"[AVISO] Erro ao criar log auditoria instrumento: {e_audit}")
 
             # Cria calibracao automaticamente
-            data_calib = buscar_valor('data_calibracao', inst)
-            data_emissao = buscar_valor('data_emissao', inst)
-            numero_cert = buscar_valor('numero_certificado', inst) or identificacao
+            data_calib = normalizar_data(buscar_valor('data_calibracao', inst))
+            data_emissao = normalizar_data(buscar_valor('data_emissao', inst))
+            
+            # PRIORIDADE TOTAL para numero_certificado na calibração
+            numero_cert = buscar_valor('numero_certificado', inst) or \
+                          buscar_valor('numero_calibracao', inst) or \
+                          identificacao
+            
+            print(f"[DEBUG] Nova calibração: cert={numero_cert}, inst={identificacao}")
             laboratorio = buscar_valor('laboratorio', inst) or buscar_valor('laboratorio_responsavel', inst) or 'N/I'
-            validade = buscar_valor('validade', inst) or buscar_valor('data_proxima_calibracao', inst)
+            validade = normalizar_data(buscar_valor('validade', inst) or buscar_valor('data_proxima_calibracao', inst))
 
             try:
                 sql_cal = """

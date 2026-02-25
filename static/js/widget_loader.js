@@ -1,7 +1,8 @@
 
 (function () {
-    // Configurações (URL do seu servidor Python)
-    const CHAT_URL = "http://localhost:5001";
+    // Detecta automaticamente a URL do Metron a partir do próprio script
+    const _scriptSrc = document.currentScript ? document.currentScript.src : '';
+    const CHAT_URL = _scriptSrc ? (new URL(_scriptSrc)).origin : "http://localhost:5001";
 
     // Pega user_id da página pai se existir (ex: input hidden ou variavel global)
     // Adapte isso conforme seu sistema Labster expõe o ID do usuário
@@ -352,7 +353,7 @@
                 formData.append('data_calibracao', dataCalib);
                 formData.append('laboratorio_responsavel', inst.laboratorio_responsavel || '');
                 formData.append('motivo_calibracao', inst.motivo_calibracao || 'Calibração Periódica');
-                formData.append('resultado_calibracao', 'Pendente Aprovação');
+                formData.append('resultado_calibracao', 'Em Revisão');
                 formData.append('certificado_pdf', pdfFile);
                 formData.append('acao', 'salvar');
 
@@ -426,7 +427,8 @@
             type: 'set_page_context',
             path: window.location.pathname,
             url: window.location.href,
-            title: document.title
+            title: document.title,
+            chat_url: CHAT_URL
         }, '*');
     }
 

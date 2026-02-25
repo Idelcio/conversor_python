@@ -194,6 +194,7 @@
                 startPolling(data.task_id);
 
                 showToast('Processamento iniciado!', 'info');
+                resetProcessButton();
             } else {
                 showToast('Erro ao iniciar: ' + (data.message || 'Desconhecido'), 'error');
                 resetProcessButton();
