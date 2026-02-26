@@ -910,3 +910,10 @@ body {
 .table-container tr:hover {
     background: var(--bg-secondary);
 }
+
+/* Mensagem de Gráfico */
+.chart-message {
+    width: 100%;
+    max-width: 420px;
+    padding: 12px;
+}

@@ -247,6 +247,20 @@ ATENCAO:
 3. Retorne APENAS o JSON. Sem markdown (```json).
 """
 
+# Prompt para Geração de Gráfico (retorna mostrar_grafico JSON)
+GRAPH_EXTRACTION_PROMPT = """Analise as imagens deste certificado de calibração.
+Sua ÚNICA tarefa: localizar a tabela de resultados e extrair os pares (valor nominal, erro de indicação).
+
+Retorne SOMENTE este JSON, sem nenhum texto antes ou depois:
+{"message": "Aqui está o gráfico!", "mostrar_grafico": {"titulo": "Erro de Indicação", "x_label": "Valor Nominal (unidade)", "y_label": "Erro (unidade)", "pontos": [{"x": 0.0, "y": 0.000, "ie": 0.007}]}}
+
+Onde:
+- "pontos": todos os pares da tabela (x=nominal, y=erro_de_indicacao)
+- "ie": valor do ±IE ou tolerância máxima (mesmo valor para todos; use 0 se não encontrar)
+- Substitua "unidade" pela unidade real do instrumento (ex: mm, °C, kgf)
+- Retorne SOMENTE o JSON. Zero texto adicional.
+"""
+
 # Prompt Conversacional (usado quando o usuário faz uma pergunta específica com o PDF)
 CONVERSATIONAL_PROMPT = """
 Você tem acesso visual ao documento enviado pelo usuário ou ao contexto da conversa.

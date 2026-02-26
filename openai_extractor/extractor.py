@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 from openai import OpenAI
 import fitz  # PyMuPDF
 
-from .prompts import SYSTEM_PROMPT, EXTRACTION_PROMPT, SECURITY_MESSAGES, JSON_SCHEMA_PROMPT, CONVERSATIONAL_PROMPT
+from .prompts import SYSTEM_PROMPT, EXTRACTION_PROMPT, SECURITY_MESSAGES, JSON_SCHEMA_PROMPT, CONVERSATIONAL_PROMPT, GRAPH_EXTRACTION_PROMPT
 from .security import SecurityValidator
 
 
@@ -90,11 +90,16 @@ class OpenAIExtractor:
         # Palavras-chave RESTRITIVAS para evitar ativar JSON enquanto conversa sobre tabelas
         keywords_json = ['json', 'banco de dados', 'sql', 'estruturar para banco', 'xml', 'planilha excel']
         keywords_checklist = ['checklist', 'preencher check', 'verificar check', 'conferir check']
+        keywords_grafico = ['grafico', 'gráfico', 'chart', 'plot', 'plotar', 'mostrar grafico', 'gerar grafico']
 
         is_extraction_request = user_prompt and any(k in user_prompt.lower() for k in keywords_json)
         is_checklist_request = user_prompt and any(k in user_prompt.lower() for k in keywords_checklist)
+        is_grafico_request = user_prompt and any(k in user_prompt.lower() for k in keywords_grafico)
 
-        if is_checklist_request:
+        if is_grafico_request:
+            final_text_prompt = GRAPH_EXTRACTION_PROMPT
+            print("[IA] Modo Gráfico ativado!")
+        elif is_checklist_request:
             # Modo Checklist: Analisa PDF e retorna JSON com true/false por item
             final_text_prompt = """Voce e o METRON, assistente de metrologia da Gocal. Sua tarefa agora e analisar este CERTIFICADO DE CALIBRACAO e preencher um checklist de validacao.
 

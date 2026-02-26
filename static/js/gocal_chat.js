@@ -484,7 +484,13 @@ async function sendMessage() {
 
             const data = await response.json();
             removeLastMessage();
-            addBotMessage(data.message);
+
+            // Se tem gráfico, não exibe a mensagem de texto (evita repetir a tabela)
+            if (data.grafico) {
+                renderGraficoCalib(data.grafico);
+            } else {
+                addBotMessage(data.message);
+            }
             updateTokenCounter(data.token_usage);
 
             // Navegação Real
@@ -564,6 +570,16 @@ function pollProgress(taskId) {
                     // NOVO: Verifica se é um CHECKLIST AUTOMATICO (Via Async)
                     const firstRes = extractedData[0];
                     const checklistPayload = firstRes.auto_checklist || firstRes.checklist_data;
+
+                    // Caso: Gráfico de Calibração
+                    if (firstRes.mostrar_grafico) {
+                        renderGraficoCalib(firstRes.mostrar_grafico);
+                        uploadedFiles = [];
+                        fileInput.value = "";
+                        const fl = document.getElementById('filesList');
+                        if (fl) fl.style.display = 'none';
+                        return;
+                    }
 
                     if (checklistPayload) {
                         addBotMessage(firstRes.message || "✅ Checklist verificado! Marcando itens na tela...");
@@ -1616,4 +1632,93 @@ async function buscarEExibirInstrumentos(filtros) {
     }
 
     addBotMessage(html, true);
+}
+
+// ==========================================
+// GRÁFICO DE CALIBRAÇÃO (Chart.js)
+// ==========================================
+function renderGraficoCalib(grafico) {
+    const { titulo, x_label, y_label, pontos } = grafico;
+    if (!pontos || pontos.length === 0) return;
+
+    const canvasId = 'chart_' + Date.now();
+    const wrapper = document.createElement('div');
+    wrapper.className = 'message bot';
+    wrapper.innerHTML = `
+        <div class="avatar">🤖</div>
+        <div class="message-content chart-message">
+            <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">${titulo}</div>
+            <div style="position:relative; width:100%; height:220px;">
+                <canvas id="${canvasId}"></canvas>
+            </div>
+        </div>`;
+    chatMessages.appendChild(wrapper);
+    scrollToBottom();
+
+    const xVals = pontos.map(p => p.x);
+    const ie = pontos[0]?.ie ?? null;
+
+    const datasets = [
+        {
+            label: 'Erro de Indicação',
+            data: pontos.map(p => ({ x: p.x, y: p.y })),
+            borderColor: '#667eea',
+            backgroundColor: 'rgba(102,126,234,0.15)',
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            tension: 0.3,
+            fill: false,
+        }
+    ];
+
+    if (ie !== null) {
+        const xMin = Math.min(...xVals);
+        const xMax = Math.max(...xVals);
+        datasets.push({
+            label: '+IE (tolerância)',
+            data: [{ x: xMin, y: ie }, { x: xMax, y: ie }],
+            borderColor: '#e74c3c',
+            borderDash: [5, 4],
+            pointRadius: 0,
+            tension: 0,
+            fill: false,
+        });
+        datasets.push({
+            label: '-IE (tolerância)',
+            data: [{ x: xMin, y: -ie }, { x: xMax, y: -ie }],
+            borderColor: '#e74c3c',
+            borderDash: [5, 4],
+            pointRadius: 0,
+            tension: 0,
+            fill: false,
+        });
+    }
+
+    new Chart(document.getElementById(canvasId), {
+        type: 'line',
+        data: { datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { font: { size: 11 }, boxWidth: 16 } },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}`
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    type: 'linear',
+                    title: { display: true, text: x_label, font: { size: 11 } },
+                    ticks: { font: { size: 10 } }
+                },
+                y: {
+                    title: { display: true, text: y_label, font: { size: 11 } },
+                    ticks: { font: { size: 10 } }
+                }
+            }
+        }
+    });
 }

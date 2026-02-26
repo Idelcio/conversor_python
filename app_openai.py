@@ -387,7 +387,34 @@ def chat_mensagem():
             "Favoritos": "/favoritos",
         }
 
-        prompt = f"""Voce e o Metron, assistente do sistema Gocal/Labster de gestao de instrumentos de medicao.
+        # Detecta se o usuario quer um grafico
+        grafico_keywords = ['grafico', 'gráfico', 'chart', 'plot', 'plotar', 'mostrar grafico', 'gerar grafico']
+        is_grafico_request = any(kw in message.lower() for kw in grafico_keywords)
+
+        # Se quer gráfico mas não tem dados do PDF na sessão, responde sem chamar a IA
+        if is_grafico_request and not dados:
+            return jsonify({
+                'success': True,
+                'message': 'Para gerar o gráfico, carregue o **PDF do certificado de calibração** primeiro. Os dados de medição precisam estar disponíveis na sessão. 📄',
+                'token_usage': extractor.token_usage if extractor else {}
+            })
+
+        if is_grafico_request:
+            prompt = f"""Voce e o Metron. O usuario quer um GRAFICO dos dados de calibracao.
+{contexto}
+
+TAREFA UNICA: Extraia os pontos de calibracao (valor nominal e erro de indicacao) do contexto acima e retorne SOMENTE este JSON, sem nenhum texto antes ou depois:
+
+{{"message": "Aqui está o gráfico!", "mostrar_grafico": {{"titulo": "Erro de Indicação", "x_label": "Valor Nominal (mm)", "y_label": "Erro (mm)", "pontos": [{{"x": 0.0, "y": 0.000, "ie": 0.007}}, {{"x": 75.31, "y": 0.005, "ie": 0.007}}]}}}}
+
+REGRAS:
+- "pontos": lista com todos os pares (x=nominal, y=erro_de_indicacao) da tabela de resultados
+- "ie": valor do ±IE ou tolerância máxima (use 0 se nao encontrar)
+- "x_label" e "y_label": use a unidade correta do instrumento
+- Retorne SOMENTE o JSON. Zero texto adicional.
+"""
+        else:
+            prompt = f"""Voce e o Metron, assistente do sistema Gocal/Labster de gestao de instrumentos de medicao.
 
 IMPORTANTE: Voce SOMENTE pode falar sobre dados do usuario autenticado (user_id={req_user_id or 'NAO IDENTIFICADO'}).
 Nunca revele nem use dados de outros usuarios. Se nao houver user_id, recuse consultas ao banco.
@@ -468,7 +495,16 @@ INSTRUCOES:
                         'auto_checklist': resp_json['checklist_data']
                     })
 
-                # Caso 3: Listar/Filtrar Instrumentos
+                # Caso 3: Gráfico de Calibração
+                if 'mostrar_grafico' in resp_json:
+                    return jsonify({
+                        'success': True,
+                        'message': resp_json.get('message', 'Gerando gráfico...'),
+                        'grafico': resp_json['mostrar_grafico'],
+                        'token_usage': extractor.token_usage if extractor else {}
+                    })
+
+                # Caso 4: Listar/Filtrar Instrumentos
                 if 'listar_instrumentos' in resp_json:
                     filtros = resp_json['listar_instrumentos']
                     # SEGURANÇA: usa apenas o user_id da requisição autenticada

@@ -6,7 +6,7 @@ import os
 import json
 import fitz  # PyMuPDF
 import google.generativeai as genai
-from .prompts import SYSTEM_PROMPT, EXTRACTION_PROMPT, JSON_SCHEMA_PROMPT, CONVERSATIONAL_PROMPT
+from .prompts import SYSTEM_PROMPT, EXTRACTION_PROMPT, JSON_SCHEMA_PROMPT, CONVERSATIONAL_PROMPT, GRAPH_EXTRACTION_PROMPT
 from .security import SecurityValidator
 
 class GeminiAdapter:
@@ -65,9 +65,13 @@ class GeminiAdapter:
         is_json_mode = False
         prompt_text = EXTRACTION_PROMPT
 
-        # Se usuario pediu especificamente JSON ou Dados
+        # Se usuario pediu grafico
+        keywords_grafico = ['grafico', 'gráfico', 'chart', 'plot', 'plotar', 'mostrar grafico', 'gerar grafico']
         keywords = ['json', 'banco', 'estruturar', 'extrair', 'tabela']
-        if user_prompt and any(k in user_prompt.lower() for k in keywords):
+        if user_prompt and any(k in user_prompt.lower() for k in keywords_grafico):
+             prompt_text = GRAPH_EXTRACTION_PROMPT
+             print("[GEMINI] Modo Gráfico ativado!")
+        elif user_prompt and any(k in user_prompt.lower() for k in keywords):
              prompt_text = JSON_SCHEMA_PROMPT
              is_json_mode = True
              prompt_text += f"\n\nCONTEXTO DO USUARIO: {user_prompt}"
