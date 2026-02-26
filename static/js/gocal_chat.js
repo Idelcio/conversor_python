@@ -803,10 +803,56 @@ function addUserMessage(text) {
 
 function markdownToHtml(text) {
     if (!text) return '';
-    // Nao converte se ja for HTML rico
-    if (text.includes('<table') || text.includes('<div style') || text.includes('<strong>')) return text;
-    return text
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+    // Se for HTML complexo (tabelas de preview já prontas), retorna como está
+    if (text.includes('<table') || text.includes('<div style')) return text;
+
+    // 0. Normaliza tags enviadas pela IA para evitar escape duplo
+    let normalized = text
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<strong>(.*?)<\/strong>/gi, '**$1**')
+        .replace(/<b>(.*?)<\/b>/gi, '**$1**');
+
+    // 1. Escapa caracteres HTML para segurança
+    let html = normalized
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+    // 2. Transforma Markdown de Tabelas
+    // Detecta blocos que começam e terminam com |
+    const tableRegex = /((?:\|.*\|(?:\n|$)){2,})/g;
+    html = html.replace(tableRegex, (match) => {
+        const lines = match.trim().split('\n');
+        if (lines.length < 2) return match;
+
+        // Verifica se tem a linha de separação |--|
+        const hasSeparator = lines.some(l => l.includes('|') && l.includes('-'));
+        if (!hasSeparator) return match;
+
+        let tableHtml = '<div class="table-container"><table>';
+
+        lines.forEach((line, idx) => {
+            if (line.includes('|') && line.includes('---')) return; // Pula linha separadora
+
+            const cells = line.split('|').map(c => c.trim()).filter((c, i, arr) => {
+                // Remove células vazias nas pontas
+                if ((i === 0 || i === arr.length - 1) && c === '') return false;
+                return true;
+            });
+
+            if (cells.length === 0) return;
+
+            const tag = idx === 0 ? 'th' : 'td';
+            tableHtml += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+        });
+
+        tableHtml += '</table></div>';
+        return tableHtml;
+    });
+
+    // 3. Outras formatações Markdown
+    return html
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.+?)\*/g, '<em>$1</em>')
         .replace(/\n/g, '<br>');
@@ -1523,8 +1569,8 @@ document.head.appendChild(styleJSON);
 async function buscarEExibirInstrumentos(filtros) {
     const userId = window.gocalUserId || '';
     const params = new URLSearchParams({ user_id: userId });
-    if (filtros.termo)           params.append('termo', filtros.termo);
-    if (filtros.status)          params.append('status', filtros.status);
+    if (filtros.termo) params.append('termo', filtros.termo);
+    if (filtros.status) params.append('status', filtros.status);
     if (filtros.filtro_vencidos) params.append('filtro_vencidos', '1');
     if (filtros.filtro_a_vencer) params.append('filtro_a_vencer', '1');
 

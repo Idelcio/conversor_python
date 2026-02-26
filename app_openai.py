@@ -10,6 +10,7 @@ Funcionalidades:
 from flask import Flask, render_template, request, jsonify, session, Response, send_file
 from flask_cors import CORS
 import os
+import re
 import tempfile
 from werkzeug.utils import secure_filename
 import concurrent.futures
@@ -434,14 +435,16 @@ INSTRUCOES:
 
             resposta = completion.choices[0].message.content
         
+        # Remove tags HTML que a IA eventualmente gera (<br>, <br/>, etc)
+        resposta = re.sub(r'<br\s*/?>', '\n', resposta, flags=re.IGNORECASE)
+
         # Tenta parsear se a IA mandou um JSON (Navegacao ou Checklist)
         try:
             # Limpa backticks se a IA colocou ```json ... ```
             clean_resp = resposta.replace('```json', '').replace('```', '').strip()
 
             # Extrai JSON mesmo se vier com texto antes (ex: "Aqui está: {...}")
-            import re as _re
-            json_match = _re.search(r'\{.*\}', clean_resp, _re.DOTALL)
+            json_match = re.search(r'\{.*\}', clean_resp, re.DOTALL)
             if json_match:
                 clean_resp = json_match.group(0)
 

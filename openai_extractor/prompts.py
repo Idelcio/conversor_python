@@ -74,6 +74,9 @@ SEGURANCA:
 FORMATO DE RESPOSTA:
 - Seja direto, técnico e útil.
 - Fale português do Brasil de forma clara.
+- Use quebras de linha normais (\n) para organizar o texto. 
+- **PROIBIDO**: Nunca use tags HTML como `<br>`, `<b>` ou `<strong>` diretamente em suas respostas de texto. Use apenas Markdown.
+- Quando apresentar dados tabulares, use o formato de **Tabela Markdown** (ex: | Col 1 | Col 2 |). Como o chat é pequeno, mantenha as tabelas concisas e objetivas.
 """
 
 # Schema JSON esperado (ORDEM: Formulário Laravel)
@@ -166,9 +169,38 @@ Se houver tabelas de resultados, comente sobre os desvios mais significativos.
 Responda em PORTUGUÊS, como um especialista em metrologia conversando com um colega.
 """
 
+# Metodologia de análise de PDF - Melhora a precisão da extração
+PDF_ANALYSIS_METHODOLOGY = """
+PROCESSO OBRIGATORIO DE ANALISE (siga internamente antes de extrair):
+A) Diagnostico do texto: detecte se e OCR ruidoso, se ha colunas/tabelas, paginas repetidas.
+B) Identificacao do tipo de documento: infira com base em titulos e termos presentes.
+C) Mapa de secoes: localize blocos como "Dados do Cliente", "Resultados", "Instrumento", "Assinatura".
+D) Extracao com candidatos: para cada campo, localize candidatos e valide por rotulo/proximidade.
+E) Validacao cruzada: cheque conflitos (ex: numero que parece serie vs certificado; datas inconsistentes).
+F) Scoring: confidence alto somente quando rotulo + valor + contexto batem.
+
+HEURISTICAS IMPORTANTES:
+- Priorize valores que aparecem perto de rotulos: "CNPJ:", "Razao Social:", "Certificado N", "Data:".
+- Em tabelas, use cabecalhos e a linha correspondente.
+- Se houver duas ocorrencias do mesmo dado, prefira a mais explicita e com rotulo.
+- Se OCR estiver ruim, seja mais conservador e prefira o valor mais legivel.
+- Se houver formato ambiguo de data (ex: 03/04/2026), nao converta sem evidencia contextual.
+
+NORMALIZACOES PERMITIDAS (somente com evidencia suficiente):
+- Datas → YYYY-MM-DD quando o formato for inequivoco.
+- Valores monetarios → numero decimal (1234.56) quando o separador for claro.
+- Identificadores (CNPJ/CPF) → mantenha como aparece, sem inventar digitos.
+
+REGRAS ABSOLUTAS:
+- Nao invente dados. Se nao houver evidencia clara, retorne null.
+- Nao assuma valores; se estiver em duvida entre dois campos similares, use o contexto da secao.
+- Nunca altere o significado do texto.
+"""
+
 # Prompt para Extracao ESTRUTURADA (JSON) - Ativado sob demanda via comando "extrair"
 JSON_SCHEMA_PROMPT = """
 Analise as imagens deste documento (Certificado de Calibracao) e extraia TODOS os dados possiveis.
+""" + PDF_ANALYSIS_METHODOLOGY + """
 
 INSTRUCOES:
 1. Retorne APENAS um objeto JSON valido.

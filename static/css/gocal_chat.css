@@ -868,3 +868,45 @@ body {
 
     /* Nunca chega a 100% sozinho */
 }
+
+/* Estilos para Tabelas Markdown no Chat */
+.table-container {
+    width: 100%;
+    margin: 12px 0;
+    overflow-x: auto;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+.table-container table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px; /* Fonte compacta para o chat */
+    min-width: 400px; /* Garante que a tabela não esmague os dados */
+}
+
+.table-container th {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.table-container td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.table-container tr:last-child td {
+    border-bottom: none;
+}
+
+.table-container tr:hover {
+    background: var(--bg-secondary);
+}
