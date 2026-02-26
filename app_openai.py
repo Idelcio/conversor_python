@@ -439,6 +439,11 @@ INSTRUCOES:
    - Use "filtro_a_vencer": true para instrumentos que vencem nos proximos 30 dias
    - CRITICO: retorne SOMENTE o JSON, sem explicacao, sem introducao, sem texto adicional
 
+4. Se o usuario pedir para BUSCAR LABORATORIOS (ex: "onde calibro multimetro?", "qual lab faz paquimetro?", "buscar laboratorio de balanca") — retorne APENAS este JSON puro:
+   {{"message": "Buscando laboratórios...", "buscar_laboratorios": {{"termo": "multimetro"}}}}
+   - Tente identificar o nome correto do instrumento (e.g. se o usuario digitar errado, corrija)
+   - CRITICO: retorne SOMENTE o JSON
+
 3. Para qualquer outra pergunta (sobre o sistema, como usar, etc.), responda em texto normal.
 """
 
@@ -507,12 +512,23 @@ INSTRUCOES:
                 # Caso 4: Listar/Filtrar Instrumentos
                 if 'listar_instrumentos' in resp_json:
                     filtros = resp_json['listar_instrumentos']
-                    # SEGURANÇA: usa apenas o user_id da requisição autenticada
                     uid = req_user_id or session.get('gocal_user_id') or ''
                     texto_resultado = _buscar_instrumentos_texto(uid, filtros)
                     return jsonify({
                         'success': True,
                         'message': texto_resultado,
+                        'token_usage': extractor.token_usage if extractor else {}
+                    })
+
+                # Caso 5: Buscar Laboratórios
+                if 'buscar_laboratorios' in resp_json:
+                    filtros_lab = resp_json['buscar_laboratorios']
+                    termo_lab = filtros_lab.get('termo', '')
+                    # Se vier lat/lon na sessão (opcional)
+                    return jsonify({
+                        'success': True,
+                        'message': resp_json.get('message', 'Buscando laboratórios...'),
+                        'buscar_laboratorios': {'termo': termo_lab},
                         'token_usage': extractor.token_usage if extractor else {}
                     })
         except:
@@ -589,6 +605,164 @@ def _buscar_instrumentos_texto(user_id, filtros):
     except Exception as e:
         print(f"[ERRO] _buscar_instrumentos_texto: {e}")
         return "Erro ao buscar instrumentos no banco de dados."
+
+
+# ============================================================
+# BUSCA DE LABORATÓRIOS POR INSTRUMENTO
+# ============================================================
+_INSTRUMENTO_ALIASES = {
+    'multimetro': ['tensao', 'corrente', 'resistencia', 'eletric'],
+    'multímetro': ['tensao', 'corrente', 'resistencia', 'eletric'],
+    'voltimetro': ['tensao'],
+    'voltímetro': ['tensao'],
+    'amperimetro': ['corrente'],
+    'amperímetro': ['corrente'],
+    'ohmimetro': ['resistencia'],
+    'ohmímetro': ['resistencia'],
+    'termometro': ['temperatura', 'termometria'],
+    'termômetro': ['temperatura', 'termometria'],
+    'termopar': ['termopar', 'temperatura'],
+    'paquimetro': ['comprimento', 'paquimetro', 'dimensional'],
+    'paquímetro': ['comprimento', 'paquimetro', 'dimensional'],
+    'micrometro': ['comprimento', 'micrometro', 'dimensional'],
+    'micrômetro': ['comprimento', 'micrometro', 'dimensional'],
+    'balanca': ['massa', 'balanca'],
+    'balança': ['massa', 'balanca'],
+    'manometro': ['pressao', 'manometro'],
+    'manômetro': ['pressao', 'manometro'],
+    'torquimetro': ['torque', 'torquimetro'],
+    'torquímetro': ['torque', 'torquimetro'],
+    'cronometro': ['tempo', 'intervalo'],
+    'cronômetro': ['tempo', 'intervalo'],
+    'higrometro': ['umidade', 'higro'],
+    'higrômetro': ['umidade', 'higro'],
+    'durometro': ['dureza'],
+    'durômetro': ['dureza'],
+    'rugosimetro': ['rugosidade'],
+    'rugosímetro': ['rugosidade'],
+    'osciloscópio': ['tensao', 'frequencia', 'eletric'],
+    'osciloscópio': ['tensao', 'frequencia'],
+    'calibrador': ['calibrador'],
+    'trena': ['comprimento', 'dimensional'],
+    'pino': ['comprimento', 'dimensional'],
+    'nivel': ['angulo', 'nivel'],
+    'nível': ['angulo', 'nivel'],
+    'pipeta': ['volume'],
+    'bureta': ['volume'],
+    'proveta': ['volume'],
+}
+
+def _extrair_termo_instrumento(message):
+    """Extrai o nome do instrumento de uma pergunta sobre laboratórios."""
+    msg = message.lower().strip()
+    # Remove frases comuns que não são o instrumento
+    stop_phrases = [
+        'qual laboratório calibra', 'qual laboratorio calibra',
+        'qual lab calibra', 'laboratório que calibra', 'laboratorio que calibra',
+        'onde posso calibrar', 'onde calibrar', 'onde vou calibrar',
+        'laboratório para calibrar', 'laboratorio para calibrar',
+        'quero calibrar', 'preciso calibrar', 'tem laboratório para',
+        'tem laboratorio para', 'qual laboratório faz', 'qual lab faz',
+        'buscar laboratório', 'buscar laboratorio', 'encontrar laboratório',
+        'laboratorio para', 'laboratório para', 'laboratório de calibração de',
+        'laboratorio de calibracao de', 'laboratorio calibra', 'laboratório calibra',
+        'calibração de', 'calibracao de', 'calibra', 'meu', 'minha', 'o ', 'a ',
+        'um ', 'uma ', '?', '!'
+    ]
+    for phrase in stop_phrases:
+        msg = msg.replace(phrase, ' ')
+    msg = re.sub(r'\s+', ' ', msg).strip().strip('.,?!')
+    return msg if len(msg) > 1 else message.strip()
+
+
+def _buscar_laboratorios_para_instrumento(termo, lat=None, lon=None, limit=8):
+    """Busca laboratórios acreditados para calibrar um instrumento.
+    Se lat/lon fornecidos, ordena por distância (Haversine). Caso contrário, por nome."""
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        like_term = f'%{termo}%'
+
+        if lat and lon:
+            query = """
+                SELECT DISTINCT
+                    l.id, l.nome_laboratorio, l.uf, l.cidade, l.situacao,
+                    l.telefone, l.email, l.acreditacao_num,
+                    e.descricao_servico, e.grupo, e.cmc,
+                    ROUND((6371 * ACOS(GREATEST(-1, LEAST(1,
+                        COS(RADIANS(%s)) * COS(RADIANS(l.latitude)) *
+                        COS(RADIANS(l.longitude) - RADIANS(%s)) +
+                        SIN(RADIANS(%s)) * SIN(RADIANS(l.latitude))
+                    )))), 0) AS distancia_km
+                FROM escopo_calibracao e
+                JOIN laboratorio l ON l.id = e.laboratorio_id
+                WHERE (e.descricao_servico LIKE %s OR e.grupo LIKE %s)
+                  AND l.situacao = 'Ativo'
+                  AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL
+                ORDER BY distancia_km ASC
+                LIMIT %s
+            """
+            cur.execute(query, (lat, lon, lat, like_term, like_term, limit))
+        else:
+            query = """
+                SELECT DISTINCT
+                    l.id, l.nome_laboratorio, l.uf, l.cidade, l.situacao,
+                    l.telefone, l.email, l.acreditacao_num,
+                    e.descricao_servico, e.grupo, e.cmc
+                FROM escopo_calibracao e
+                JOIN laboratorio l ON l.id = e.laboratorio_id
+                WHERE (e.descricao_servico LIKE %s OR e.grupo LIKE %s)
+                  AND l.situacao = 'Ativo'
+                ORDER BY l.nome_laboratorio ASC
+                LIMIT %s
+            """
+            cur.execute(query, (like_term, like_term, limit))
+
+        results = cur.fetchall()
+        for r in results:
+            if r.get('distancia_km') is not None:
+                r['distancia_km'] = int(r['distancia_km'])
+        cur.close()
+        conn.close()
+        return results
+    except Exception as e:
+        print(f"[LAB-SEARCH] Erro: {e}")
+        return []
+
+
+@app.route('/buscar-laboratorios', methods=['POST'])
+def buscar_laboratorios():
+    """Busca laboratórios aptos a calibrar um instrumento específico.
+    Aceita lat/lon para ordenação por distância."""
+    data = request.get_json()
+    message  = data.get('message', '')
+    termo_ia = data.get('termo_ia')
+    lat = data.get('lat')
+    lon = data.get('lon')
+
+    if not message and not termo_ia:
+        return jsonify({'success': False, 'message': 'Parâmetro não informado.'})
+
+    # Prioriza o termo extraído pela IA (que já corrigiu typos)
+    termo = termo_ia if termo_ia else _extrair_termo_instrumento(message)
+    print(f"[LAB-SEARCH] Termo extraído: '{termo}' | lat={lat} lon={lon}")
+
+    labs = _buscar_laboratorios_para_instrumento(termo, lat=lat, lon=lon, limit=8)
+
+    if not labs:
+        return jsonify({
+            'success': True,
+            'message': f'Não encontrei laboratórios acreditados para **{termo}** no banco. Tente um termo diferente (ex: "paquímetro", "termômetro", "balança").',
+            'laboratorios': []
+        })
+
+    return jsonify({
+        'success': True,
+        'message': f'Encontrei {len(labs)} laboratório(s) para **{termo}**:',
+        'laboratorios': labs,
+        'termo': termo,
+        'por_distancia': lat is not None
+    })
 
 
 @app.route('/buscar-instrumentos', methods=['GET'])

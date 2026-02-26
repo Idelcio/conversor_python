@@ -469,7 +469,6 @@ async function sendMessage() {
                 removeLastMessage();
                 addBotMessage('❌ Erro no envio: ' + data.message);
             }
-
         } else {
             // MODO CHAT (Apenas Texto)
             const response = await fetch('/chat-mensagem', {
@@ -509,6 +508,12 @@ async function sendMessage() {
             // Listagem/Filtro de Instrumentos
             if (data.listar_instrumentos) {
                 await buscarEExibirInstrumentos(data.listar_instrumentos);
+            }
+
+            // Busca de Laboratórios via IA
+            if (data.buscar_laboratorios) {
+                // Se a IA detectou a busca, chama a função passando a mensagem original ou o termo
+                await _buscarEExibirLaboratorios(message, data.buscar_laboratorios.termo);
             }
         }
 
@@ -1633,6 +1638,107 @@ async function buscarEExibirInstrumentos(filtros) {
 
     addBotMessage(html, true);
 }
+
+// ==========================================
+// BUSCA DE LABORATÓRIOS
+// ==========================================
+const _labKeywords = [
+    'qual laboratório calibra', 'qual laboratorio calibra',
+    'qual lab calibra', 'laboratório que calibra', 'laboratorio que calibra',
+    'onde posso calibrar', 'onde calibrar', 'onde vou calibrar',
+    'laboratório para calibrar', 'laboratorio para calibrar',
+    'quero calibrar', 'preciso calibrar',
+    'tem laboratório para', 'tem laboratorio para',
+    'qual laboratório faz', 'qual lab faz',
+    'buscar laboratório', 'buscar laboratorio',
+    'encontrar laboratório', 'encontrar laboratorio',
+    'laboratório calibra', 'laboratorio calibra',
+];
+
+function _isLabSearch(message) {
+    const lower = message.toLowerCase();
+    return _labKeywords.some(kw => lower.includes(kw));
+}
+
+// Geolocalização cacheada
+let _userGeoCache = null;
+function _getUserGeo() {
+    return new Promise((resolve) => {
+        if (_userGeoCache) return resolve(_userGeoCache);
+        if (!navigator.geolocation) return resolve(null);
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                _userGeoCache = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+                resolve(_userGeoCache);
+            },
+            () => resolve(null),
+            { timeout: 4000 }
+        );
+    });
+}
+
+async function _buscarEExibirLaboratorios(message, termoIA = null) {
+    removeLastMessage();
+    addLoadingMessage();
+
+    const geo = await _getUserGeo();
+    // Se a IA já extraiu o termo, usamos ele diretamente. Caso contrário, deixa o backend extrair.
+    const body = { message };
+    if (termoIA) body.termo_ia = termoIA;
+    if (geo) { body.lat = geo.lat; body.lon = geo.lon; }
+
+    try {
+        const res = await fetch('/buscar-laboratorios', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        removeLastMessage();
+
+        if (!data.success || !data.laboratorios || data.laboratorios.length === 0) {
+            addBotMessage(data.message || 'Nenhum laboratório encontrado.');
+            return;
+        }
+
+        const labs = data.laboratorios;
+        const porDistancia = data.por_distancia;
+        const termo = data.termo || '';
+        let html = `<div style="font-size:13px;">`;
+        html += `<div style="font-weight:600; margin-bottom:10px; color:var(--text-primary);">`;
+        html += `🔬 ${labs.length} laboratório(s) encontrado(s) para <em>${termo}</em>`;
+        if (porDistancia) html += ` <span style="font-size:11px; color:var(--text-secondary);">(ordenados por distância)</span>`;
+        html += `</div>`;
+
+        labs.forEach((lab) => {
+            const acred = lab.acreditacao_num ? `<span style="font-size:10px; background:#e8f5e9; color:#2e7d32; padding:2px 6px; border-radius:10px; font-weight:600;">RBC ${lab.acreditacao_num}</span>` : '';
+            const distancia = lab.distancia_km != null ? `<span style="font-size:11px; color:#667eea; font-weight:600;">📍 ${lab.distancia_km} km</span>` : '';
+            const cmc = lab.cmc ? `<span style="font-size:11px; color:var(--text-secondary);">CMC: ${lab.cmc}</span>` : '';
+            const tel = lab.telefone ? `<div style="font-size:11px; color:var(--text-secondary);">📞 ${lab.telefone}</div>` : '';
+            const email = lab.email ? `<div style="font-size:11px; color:var(--text-secondary);">✉️ ${lab.email}</div>` : '';
+
+            html += `
+            <div style="background:var(--bg-secondary,#f8f9fa); border:1px solid var(--border-color,#e0e0e0);
+                        border-radius:10px; padding:10px 12px; margin-bottom:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
+                    <div style="font-weight:600; font-size:13px; color:var(--text-primary);">${lab.nome_laboratorio}</div>
+                    <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">${acred} ${distancia}</div>
+                </div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:3px;">
+                    📌 ${lab.cidade} — ${lab.uf} &nbsp;|&nbsp; ${lab.grupo || lab.descricao_servico || ''} &nbsp;|&nbsp; ${cmc}
+                </div>
+                ${tel}${email}
+            </div>`;
+        });
+
+        html += `</div>`;
+        addBotMessage(html, true);
+    } catch (e) {
+        removeLastMessage();
+        addBotMessage('Erro ao buscar laboratórios: ' + e.message);
+    }
+}
+
 
 // ==========================================
 // GRÁFICO DE CALIBRAÇÃO (Chart.js)
