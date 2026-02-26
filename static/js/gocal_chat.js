@@ -820,8 +820,8 @@ function addUserMessage(text) {
 function markdownToHtml(text) {
     if (!text) return '';
 
-    // Se for HTML complexo (tabelas de preview já prontas), retorna como está
-    if (text.includes('<table') || text.includes('<div style')) return text;
+    // Se for HTML rico (construído internamente), retorna como está
+    if (/<(table|div|button|a |span|form|input|ul|li|ol)/i.test(text)) return text;
 
     // 0. Normaliza tags enviadas pela IA para evitar escape duplo
     let normalized = text
