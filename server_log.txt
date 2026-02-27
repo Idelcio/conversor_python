@@ -1,0 +1,316 @@
+[INIT] Iniciando com OpenAI...
+[OK] Gocal IA Extractor inicializado!
+
+============================================================
+METRON - OpenAI Vision + MySQL
+============================================================
+Acesse: http://localhost:5001
+
+Rotas disponiveis:
+  GET  /                     - Chat interface
+  POST /chat-extrair         - Extrai PDF com OpenAI Vision
+  POST /inserir-banco        - Insere no MySQL
+  POST /gerar-sql            - Gera SQL para download
+  GET  /visualizar            - Interface Web de Visualizacao
+  GET  /listar-instrumentos  - Lista instrumentos
+  GET  /buscar-instrumento/N - Detalhes do instrumento N
+  GET  /health               - Health check
+============================================================
+
+ * Serving Flask app 'app_openai'
+ * Debug mode: on
+[INIT] Iniciando com OpenAI...
+[OK] Gocal IA Extractor inicializado!
+
+============================================================
+METRON - OpenAI Vision + MySQL
+============================================================
+Acesse: http://localhost:5001
+
+Rotas disponiveis:
+  GET  /                     - Chat interface
+  POST /chat-extrair         - Extrai PDF com OpenAI Vision
+  POST /inserir-banco        - Insere no MySQL
+  POST /gerar-sql            - Gera SQL para download
+  GET  /visualizar            - Interface Web de Visualizacao
+  GET  /listar-instrumentos  - Lista instrumentos
+  GET  /buscar-instrumento/N - Detalhes do instrumento N
+  GET  /health               - Health check
+============================================================
+
+[CHAT-MSG] Session: 5d3f35ae... Msg: quem é responsável pelo lab acreditação 850 | user_id=1 | geo=None,None
+[CHAT-LAB] termo='850' tipo='rbc'
+[LAB-TEXTO] termo='850' tipo='rbc' lat=None lon=None
+[LAB-DETALHE] Tentando por RBC=850
+[LAB-DETALHE] Resultado RBC: 1 linha(s)
+[LAB-SEARCH] Termo extraído: '850' | lat=None lon=None
+[CHAT-MSG] Session: ab74320e... Msg: quem e responsavel pelo lab acreditacao 850 | user_id=1 | geo=None,None
+[CHAT-LAB] termo='850' tipo='rbc'
+[LAB-TEXTO] termo='850' tipo='rbc' lat=None lon=None
+[LAB-DETALHE] Tentando por RBC=850
+[LAB-DETALHE] Resultado RBC: 1 linha(s)
+[PDF] Convertendo 2 pagina(s) do PDF em imagens...
+  [OK] Pagina 1 convertida
+  [OK] Pagina 2 convertida
+[IA] Enviando para Gocal IA...
+[IA] Modo Conversacional ativado!
+[TOKENS] Req: 3399+219 | Acum: 10099
+[IA] Resposta recebida (629 caracteres)
+[IA] Conteudo: Aqui está a tabela de erro de indicação conforme o certificado:
+
+| Nominal | Média das Medições | Erro de Indicação | ±IE  | k   | veff |
+|---------|--------------------|-------------------|------|-----|------|
+| 0,000   | 0,000              | 0,000             | 0,007| 2,00| >100 |
+| 75,310  | 75,315             | 0,005             | 0,007| 2,00| >100 |
+| 150,500 | 150,512            | 0,012             | 0,007| 2,00| >100 |
+| 225,700 | 225,711            | 0,011             | 0,007| 2,00| >100
+[IA] Resposta nao-JSON (texto livre). Adaptando...
+[OK] Extracao concluida!
+   - Identificacao: Análise IA
+   - Nome: Resposta Textual
+   - Fabricante: n/i
+[TASK] ea4db333-b557-41c3-9743-d1d25bcc82a4 concluida. 1 itens.
+[PDF] Convertendo 2 pagina(s) do PDF em imagens...
+  [OK] Pagina 1 convertida
+  [OK] Pagina 2 convertida
+[IA] Enviando para Gocal IA...
+[IA] Modo Gráfico ativado!
+[TOKENS] Req: 3440+169 | Acum: 13708
+[IA] Resposta recebida (347 caracteres)
+[IA] Conteudo: {"message": "Aqui está o gráfico!", "mostrar_grafico": {"titulo": "Erro de Indicação", "x_label": "Valor Nominal (mm)", "y_label": "Erro (mm)", "pontos": [{"x": 0.0, "y": 0.0, "ie": 0.007}, {"x": 75.31, "y": 0.005, "ie": 0.007}, {"x": 150.5, "y": 0.012, "ie": 0.007}, {"x": 225.7, "y": 0.011, "ie": 0.007}, {"x": 300.0, "y": 0.015, "ie": 0.008}]}}
+[OK] Extracao concluida!
+   - Identificacao: n/i
+   - Nome: n/i
+   - Fabricante: n/i
+[TASK] 8ace8982-8f83-40b4-8365-a0707b2ef7fb concluida. 1 itens.
+[CHAT-MSG] Session: fd592301... Msg: qual lab esta mais perto de mim para paquimetro | user_id=1 | geo=None,None
+[CHAT-LAB] termo='paquimetro' tipo='instrumento'
+[LAB-TEXTO] termo='paquimetro' tipo='instrumento' lat=None lon=None
+[LAB-SEARCH] Termo extraído: 'paquimetro' | lat=None lon=None
+[PDF] Convertendo 3 pagina(s) do PDF em imagens...
+MuPDF error: format error: cannot find startxref
+
+  [OK] Pagina 1 convertida
+[PDF] Convertendo 2 pagina(s) do PDF em imagens...
+  [OK] Pagina 2 convertida
+[PDF] Convertendo 3 pagina(s) do PDF em imagens...
+  [OK] Pagina 3 convertida
+[IA] Enviando para Gocal IA...
+[IA] Modo Extracao JSON ativado!
+  [OK] Pagina 1 convertida
+[PDF] Convertendo 2 pagina(s) do PDF em imagens...
+  [OK] Pagina 2 convertida
+[IA] Enviando para Gocal IA...
+[IA] Modo Extracao JSON ativado!
+  [OK] Pagina 1 convertida
+  [OK] Pagina 1 convertida
+[PDF] Convertendo 2 pagina(s) do PDF em imagens...
+  [OK] Pagina 2 convertida
+[IA] Enviando para Gocal IA...
+[IA] Modo Extracao JSON ativado!
+  [OK] Pagina 1 convertida
+  [OK] Pagina 2 convertida
+[IA] Enviando para Gocal IA...
+[IA] Modo Extracao JSON ativado!
+  [OK] Pagina 2 convertida
+  [OK] Pagina 3 convertida
+[IA] Enviando para Gocal IA...
+[IA] Modo Extracao JSON ativado!
+[TOKENS] Req: 4252+288 | Acum: 21494
+[IA] Resposta recebida (914 caracteres)
+[IA] Conteudo: {
+    "identificacao": "BL-010",
+    "nome": "Balanca",
+    "fabricante": "Marte",
+    "modelo": "AD300",
+    "numero_serie": "478868",
+    "descricao": "Balanca - Digital",
+    "data_calibracao": "2025-09-30",
+    "validade": null,
+    "periodicidade": null,
+    "numero_certificado": "019999/2025",
+    "departamento": "OTIMIZARE SISTEMAS INTELIGENTES LTDA",
+    "responsavel": "Everaldo da Silva Romeiro",
+    "grandezas": [
+        {
+            "faixa_nominal": "Faixa de 0 a 340g",
+            
+[OK] Extracao concluida!
+   - Identificacao: BL-010
+   - Nome: Balanca
+   - Fabricante: Marte
+[PDF] Convertendo 3 pagina(s) do PDF em imagens...
+  [OK] Pagina 1 convertida
+  [OK] Pagina 2 convertida
+  [OK] Pagina 3 convertida
+[IA] Enviando para Gocal IA...
+[IA] Modo Extracao JSON ativado!
+[TOKENS] Req: 4677+411 | Acum: 26582
+[IA] Resposta recebida (1378 caracteres)
+[IA] Conteudo: {
+    "identificacao": "BLP001",
+    "nome": "Blocos Padroes",
+    "fabricante": null,
+    "modelo": null,
+    "numero_serie": null,
+    "descricao": "Conjunto de Bloco Padrao",
+    "data_calibracao": "2025-09-30",
+    "validade": null,
+    "periodicidade": null,
+    "numero_certificado": "001792/2025",
+    "departamento": "YAPP BRASIL",
+    "responsavel": "Rodrigo Caetano",
+    "grandezas": [
+        {
+            "faixa_nominal": "distance 1",
+            "unidade": "mm",
+            "resoluca
+[IA] Resposta nao-JSON (texto livre). Adaptando...
+[OK] Extracao concluida!
+   - Identificacao: Análise IA
+   - Nome: Resposta Textual
+   - Fabricante: n/i
+[TOKENS] Req: 5357+9 | Acum: 31948
+[IA] Resposta recebida (36 caracteres)
+[IA] Conteudo: I'm sorry, I can't assist with that.
+[IA] DETECTADA RECUSA DA IA! Tentando novamente com prompt reforçado...
+[TOKENS] Req: 4252+659 | Acum: 36859
+[IA] Resposta recebida (2129 caracteres)
+[IA] Conteudo: {
+    "identificacao": "ALT-001",
+    "nome": "Medidor de Altura",
+    "fabricante": "DIGIMESS",
+    "modelo": "---",
+    "numero_serie": "1804280",
+    "descricao": "Medidor de Altura de 0 a 300 mm, com resolucao de 0,01 mm - Digital",
+    "data_calibracao": "2025-10-01",
+    "validade": null,
+    "periodicidade": null,
+    "numero_certificado": "020164/2025",
+    "departamento": "OTIMIZARE SISTEMAS INTELIGENTES LTDA",
+    "responsavel": "Roger Villano",
+    "grandezas": [
+        {
+           
+[OK] Extracao concluida!
+   - Identificacao: ALT-001
+   - Nome: Medidor de Altura
+   - Fabricante: DIGIMESS
+[TOKENS] Req: 4252+747 | Acum: 41858
+[IA] Resposta recebida (2355 caracteres)
+[IA] Conteudo: {
+    "identificacao": "MN-005",
+    "nome": "Manometro - Analogico",
+    "fabricante": "HIDROTEC",
+    "modelo": "---",
+    "numero_serie": "896448",
+    "descricao": "Manometro - Analogico",
+    "data_calibracao": "2025-08-25",
+    "validade": "2026-08-19",
+    "periodicidade": null,
+    "numero_certificado": "017261/2025",
+    "departamento": "YAPP BRASIL FABRICACAO DE TANQUES E RESERVATORIOS PARA",
+    "responsavel": "Everaldo da Silva Romeiro",
+    "grandezas": [
+        {
+            "faix
+[OK] Extracao concluida!
+   - Identificacao: MN-005
+   - Nome: Manometro - Analogico
+   - Fabricante: HIDROTEC
+[IA] Retry resposta (2099 caracteres): {
+    "identificacao": "ALT-001",
+    "nome": "Medidor de Altura",
+    "fabricante": "DIGIMESS",
+    "modelo": "---",
+    "numero_serie": "1804280",
+    "descricao": "Medidor de Altura de 0 a 300 mm, com resolucao de 0,01 mm - Digital",
+    "data_calibracao": "2024-09-11",
+    "validade": "2025-09-30",
+    "periodicidade": null,
+    "numero_certificado": "032369/2024",
+    "departamento": "OTIMIZARE SISTEMAS INTELIGENTES LTDA",
+    "responsavel": "Roger Viliano",
+    "grandezas": [
+        {
+   
+[OK] Extracao concluida!
+   - Identificacao: ALT-001
+   - Nome: Medidor de Altura
+   - Fabricante: DIGIMESS
+[TOKENS] Req: 5357+1250 | Acum: 53518
+[IA] Resposta recebida (4308 caracteres)
+[ERRO] Erro na API OpenAI: 'charmap' codec can't encode character '\u03a9' in position 523: character maps to <undefined>
+[TASK] 0573d111-600b-4b33-9fd7-9b818a20a98f concluida. 5 itens.
+[DB] PDFs base64 mesclados do cache da task 0573d111-600b-4b33-9fd7-9b818a20a98f
+[DB] Inserindo 5 instrumento(s) (user_id=1)
+[DEBUG] Nova calibração: cert=019999/2025, inst=BL-010
+[DB] Calibracao #284 criada para instrumento #203
+[DB] Certificado PDF salvo para calibracao #284 (BL-10.pdf)
+[DEBUG] Nova calibração: cert=Análise IA, inst=Análise IA
+[DB] Calibracao #285 criada para instrumento #204
+[DB] Certificado PDF salvo para calibracao #285 (BLP001.pdf)
+[DEBUG] Extraido para calibração: cert=020164/2025, tag=ALT-001
+[DEBUG] Instrumento existente id=202, numero_cert='020164/2025', data_calib='2025-10-01'
+[DEBUG] Calibracao duplicada encontrada: None
+[DB] Calibracao #286 adicionada ao instrumento existente #202
+[DEBUG] Nova calibração: cert=017261/2025, inst=MN-005
+[DB] Calibracao #287 criada para instrumento #205
+[DB] Certificado PDF salvo para calibracao #287 (MN-005.pdf)
+[DEBUG] Extraido para calibração: cert=032369/2024, tag=ALT-001
+[DEBUG] Instrumento existente id=202, numero_cert='032369/2024', data_calib='2024-09-11'
+[DEBUG] Calibracao duplicada encontrada: None
+[DB] Calibracao #288 adicionada ao instrumento existente #202
+[PDF] Convertendo 2 pagina(s) do PDF em imagens...
+  [OK] Pagina 1 convertida
+  [OK] Pagina 2 convertida
+[IA] Enviando para Gocal IA...
+[IA] Modo CHECKLIST ativado!
+[TOKENS] Req: 3750+180 | Acum: 57448
+[IA] Resposta recebida (731 caracteres)
+[IA] Conteudo: {
+    "checklist_data": {
+        "1": true,
+        "2": false,
+        "3": true,
+        "4": true,
+        "5": false,
+        "6": true,
+        "7": false,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "12": true
+    },
+    "message": "O certificado é de um laboratório acreditado e possui número e data de emissão. O cliente e local estão identificados, e as condições ambientais são informadas. O procedimento e a rastreabilidade dos padrões são citado
+[OK] Extracao concluida!
+   - Identificacao: n/i
+   - Nome: n/i
+   - Fabricante: n/i
+[TASK] e73c737f-8f75-4d9e-bc86-8e61be36cd58 concluida. 1 itens.
+[CHAT-MSG] Session: d3f9e4d0... Msg: quantos paq tem aqui | user_id=1 | geo=None,None
+[CHAT-MSG] Session: 96ad0156... Msg: piroca | user_id=1 | geo=None,None
+[PDF] Convertendo 2 pagina(s) do PDF em imagens...
+  [OK] Pagina 1 convertida
+  [OK] Pagina 2 convertida
+[IA] Enviando para Gocal IA...
+[IA] Modo CHECKLIST ativado!
+[TOKENS] Req: 3750+179 | Acum: 69327
+[IA] Resposta recebida (727 caracteres)
+[IA] Conteudo: {
+    "checklist_data": {
+        "1": true,
+        "2": false,
+        "3": true,
+        "4": true,
+        "5": false,
+        "6": true,
+        "7": false,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "12": true
+    },
+    "message": "O laboratório é acreditado e o certificado possui número e data de emissão. O cliente e local estão identificados, e as condições ambientais são informadas. O procedimento e a rastreabilidade dos padrões são citados, e

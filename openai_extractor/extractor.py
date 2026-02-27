@@ -245,18 +245,69 @@ Isso e uma tarefa 100% legitima de controle de qualidade industrial."""
 
             content = content.strip()
 
+            # ── Parse robusto: tenta vários formatos antes de desistir ─────────
+            import re as _re
+            dados = None
+
+            # Tentativa 1: JSON puro
             try:
                 dados = json.loads(content)
-            except json.JSONDecodeError as e:
-                # Fallback para resposta texto-livre (Modo ChatGPT)
-                print(f"[IA] Resposta nao-JSON (texto livre). Adaptando...")
-                dados = {
-                    "identificacao": "Análise IA",
-                    "nome": "Resposta Textual",
-                    "descricao": content, # Conteudo completo
-                    "outros_dados": "Texto extraído em formato livre",
-                    "is_text_response": True
-                }
+            except json.JSONDecodeError:
+                pass
+
+            # Tentativa 2: Extrai bloco ```json ... ``` do meio do texto
+            if dados is None:
+                m = _re.search(r'```(?:json)?\s*([\s\S]+?)\s*```', content)
+                if m:
+                    try:
+                        dados = json.loads(m.group(1))
+                        print("[IA] JSON extraído de bloco markdown")
+                    except:
+                        pass
+
+            # Tentativa 3: Localiza o primeiro { ... } válido no texto
+            if dados is None:
+                try:
+                    start = content.index('{')
+                    depth, end = 0, -1
+                    for i, c in enumerate(content[start:], start):
+                        if c == '{': depth += 1
+                        elif c == '}':
+                            depth -= 1
+                            if depth == 0:
+                                end = i + 1
+                                break
+                    if end > start:
+                        dados = json.loads(content[start:end])
+                        print("[IA] JSON extraído por localização de chaves")
+                except Exception:
+                    pass
+
+            # Tentativa 4: Pede para a IA corrigir o JSON
+            if dados is None:
+                print("[IA] JSON inválido — solicitando correção à IA...")
+                try:
+                    fix_resp = self.client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=[
+                            {"role": "system", "content": "Você é um conversor de texto para JSON. Retorne APENAS o JSON válido, sem texto adicional."},
+                            {"role": "user", "content": f"Converta em JSON limpo e válido:\n\n{content[:3000]}"}
+                        ],
+                        max_tokens=3000,
+                        temperature=0
+                    )
+                    fix_content = fix_resp.choices[0].message.content.strip()
+                    m2 = _re.search(r'```(?:json)?\s*([\s\S]+?)\s*```', fix_content)
+                    if m2: fix_content = m2.group(1)
+                    dados = json.loads(fix_content)
+                    print("[IA] JSON corrigido pela IA com sucesso")
+                except Exception as e2:
+                    print(f"[IA] Falha também na correção: {e2}")
+
+            # Nenhuma tentativa funcionou → retorna erro real (nunca cria registro falso)
+            if dados is None:
+                print(f"[ERRO] Não foi possível extrair JSON do PDF '{filename}'. Conteúdo: {content[:200]}")
+                return {"error": f"A IA não retornou JSON válido para '{filename}'. Tente novamente ou verifique o PDF."}
 
             # Adiciona arquivo de origem
             dados['arquivo_origem'] = filename or os.path.basename(pdf_path)

@@ -43,7 +43,10 @@
             </div>
             {% if user_name or user_id %}
             <div style="color:rgba(255,255,255,0.85); font-size:13px; display:flex; align-items:center; gap:6px;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="opacity:0.8"><circle cx="12" cy="8" r="4" stroke="white" stroke-width="2"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="opacity:0.8">
+                    <circle cx="12" cy="8" r="4" stroke="white" stroke-width="2" />
+                    <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="white" stroke-width="2" stroke-linecap="round" />
+                </svg>
                 <span>{{ user_name or ('ID: ' + user_id|string) }}</span>
             </div>
             {% endif %}
@@ -173,32 +176,14 @@
         </section>
     </main>
 
-    <!-- Modal de Validacao -->
-    <div id="validationModal" class="modal-overlay" style="display: none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>⚠️ Campos Obrigatórios Faltando</h3>
-                <button class="modal-close" id="btnCloseValidation">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p class="modal-subtitle">Alguns instrumentos precisam de informações manuais para serem salvos
-                    corretamente no Gocal:</p>
-                <div id="validationList" class="validation-list">
-                    <!-- Itens inseridos via JS -->
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-secondary" id="btnCancelValidation">Cancelar</button>
-                <button class="btn-primary" id="btnConfirmValidation">Salvar e Inserir</button>
-            </div>
-        </div>
-    </div>
+
+    <!-- Modal de Validação é criado dinamicamente por validation_gocal.js -->
 
     <!-- Toast Notifications -->
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="{{ url_for('static', filename='js/validation_helper.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/processamento_lote.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/validation_gocal.js') }}?v={{ range(1,99999)|random }}"></script>
+    <script src="{{ url_for('static', filename='js/processamento_lote.js') }}?v={{ range(1,99999)|random }}"></script>
 </body>
 
 </html>

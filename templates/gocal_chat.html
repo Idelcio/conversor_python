@@ -25,7 +25,8 @@
                 <div class="header-subtitle">
                     Powered by Gocal
                     <span id="pageIndicator" class="page-indicator" style="display: none;"></span>
-                    <span id="tokenCounter" style="margin-left: 8px; font-size: 10px; opacity: 0.5; font-family: monospace;">0 tokens</span>
+                    <span id="tokenCounter"
+                        style="margin-left: 8px; font-size: 10px; opacity: 0.5; font-family: monospace;">0 tokens</span>
                 </div>
             </div>
         </div>
@@ -95,7 +96,8 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="{{ url_for('static', filename='js/gocal_chat.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/validation_gocal.js') }}?v={{ range(1, 99999) | random }}"></script>
+    <script src="{{ url_for('static', filename='js/gocal_chat.js') }}?v={{ range(1, 99999) | random }}"></script>
 </body>
 
 </html>

@@ -856,12 +856,14 @@ body {
     font-size: 13px;
     color: #1a1a2e;
     font-weight: 500;
-    border: 1px solid #d1d5db;
+    border: 1.5px solid #d1d5db;
     border-radius: 6px;
-    padding: 4px 8px;
+    padding: 5px 9px;
     width: 100%;
+    box-sizing: border-box;
     background: #f9fafb;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    font-family: inherit;
 }
 
 .info-input-edit:focus {
@@ -869,6 +871,57 @@ body {
     border-color: #667eea;
     box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
     background: #fff;
+}
+
+/* Campo crítico — borda vermelha */
+.info-input-edit.field-critico {
+    border-color: #f87171;
+    background: #fff8f8;
+}
+
+.info-input-edit.field-critico:focus {
+    border-color: #dc2626;
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12);
+}
+
+.info-input-edit.field-critico::placeholder {
+    color: #f87171;
+}
+
+.info-item.field-critico .info-label {
+    color: #b91c1c;
+}
+
+/* Campo importante — borda amarela */
+.info-input-edit.field-importante {
+    border-color: #fbbf24;
+    background: #fffdf0;
+}
+
+.info-input-edit.field-importante:focus {
+    border-color: #d97706;
+    box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.12);
+}
+
+.info-input-edit.field-importante::placeholder {
+    color: #d97706;
+}
+
+.info-item.field-importante .info-label {
+    color: #92400e;
+}
+
+/* Badge tags */
+.field-tag-critico {
+    font-size: 10px;
+    vertical-align: middle;
+    margin-left: 2px;
+}
+
+.field-tag-importante {
+    font-size: 10px;
+    vertical-align: middle;
+    margin-left: 2px;
 }
 
 /* Grandezas inside result card */
@@ -885,6 +938,32 @@ body {
     font-weight: 700;
     color: #764ba2;
     margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.grandeza-delete-btn {
+    margin-left: auto;
+    background: none;
+    border: 1px solid #fecaca;
+    color: #ef4444;
+    border-radius: 5px;
+    width: 22px;
+    height: 22px;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: background 0.15s, transform 0.15s;
+    flex-shrink: 0;
+}
+
+.grandeza-delete-btn:hover {
+    background: #fef2f2;
+    transform: scale(1.15);
 }
 
 .grandeza-tags {

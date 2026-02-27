@@ -1,4 +1,4 @@
-/**
+﻿/**
  * PROCESSAMENTO EM LOTE - JavaScript
  * Gerencia upload, processamento em background e exibição de resultados
  */
@@ -390,83 +390,101 @@
         `;
     }
 
+    // Mapa de criticidade dos campos
+    const CAMPOS_STATUS = {
+        // CRITICOS: borda vermelha se vazio
+        identificacao: 'critico',
+        nome: 'critico',
+        periodicidade: 'critico',
+        numero_certificado: 'critico',
+        data_calibracao: 'critico',
+        laboratorio_responsavel: 'critico',
+        // IMPORTANTES: borda amarela se vazio
+        numero_serie: 'importante',
+        fabricante: 'importante',
+        modelo: 'importante',
+        data_proxima_calibracao: 'importante',
+        motivo_calibracao: 'importante',
+        validade: 'importante',
+        // GRANDEZA critítica
+        criterio_aceitacao: 'critico',
+        tolerancia_processo: 'importante',
+    };
+
     function renderResultCardBody(inst, idx) {
         let html = '';
 
-        // Informações básicas (campos editáveis)
+        // ── Informações Básicas ──
         html += `
         <div class="info-block">
-            <div class="info-block-title">✏️ Informações Básicas <small style="font-weight:400;color:#888;">(editável antes de inserir)</small></div>
+            <div class="info-block-title">📄 Instrumento <small style="font-weight:400;color:#888;">(todos editáveis)</small></div>
             <div class="info-grid">
-                ${editableInfoItem('Identificação (Tag)', inst.identificacao, 'identificacao', idx)}
-                ${editableInfoItem('Nome', inst.nome, 'nome', idx)}
-                ${editableInfoItem('Fabricante', inst.fabricante, 'fabricante', idx)}
-                ${editableInfoItem('Modelo', inst.modelo, 'modelo', idx)}
-                ${editableInfoItem('Nº Série', inst.numero_serie, 'numero_serie', idx)}
-                ${infoItem('Descrição', inst.descricao)}
+                ${editField('Identificação (Tag)', inst.identificacao, 'identificacao', idx)}
+                ${editField('Nome', inst.nome, 'nome', idx)}
+                ${editField('Fabricante', inst.fabricante, 'fabricante', idx)}
+                ${editField('Modelo', inst.modelo, 'modelo', idx)}
+                ${editField('Nº Série', inst.numero_serie, 'numero_serie', idx)}
+                ${editField('Periodicidade (m)', inst.periodicidade, 'periodicidade', idx)}
+                ${editField('Localização', inst.localizacao, 'localizacao', idx)}
+                ${editField('Descrição', inst.descricao, 'descricao', idx, 'full')}
             </div>
         </div>`;
 
-        // Calibração (campos editáveis)
+        // ── Calibração ──
         html += `
         <div class="info-block">
-            <div class="info-block-title">📅 Dados da Calibração</div>
+            <div class="info-block-title">📅 Calibração</div>
             <div class="info-grid">
-                ${editableInfoItem('Data Calibração', inst.data_calibracao, 'data_calibracao', idx)}
-                ${infoItem('Data Emissão', inst.data_emissao)}
-                ${editableInfoItem('Validade', inst.validade || inst.data_proxima_calibracao, 'validade', idx)}
-                ${editableInfoItem('Nº Certificado', inst.numero_certificado, 'numero_certificado', idx)}
-                ${infoItem('Laboratório', inst.laboratorio || inst.laboratorio_responsavel)}
-                ${infoItem('Motivo', inst.motivo_calibracao)}
+                ${editField('Data Calibração', inst.data_calibracao, 'data_calibracao', idx)}
+                ${editField('Data Emissão', inst.data_emissao, 'data_emissao', idx)}
+                ${editField('Validade', inst.validade || inst.data_proxima_calibracao, 'validade', idx)}
+                ${editField('Nº Certificado', inst.numero_certificado, 'numero_certificado', idx)}
+                ${editField('Laboratório', inst.laboratorio || inst.laboratorio_responsavel, 'laboratorio_responsavel', idx)}
+                ${editField('Motivo', inst.motivo_calibracao, 'motivo_calibracao', idx)}
             </div>
         </div>`;
 
-        // Meta
+        // ── Informações Complementares ──
         html += `
         <div class="info-block">
-            <div class="info-block-title">Informações Complementares</div>
+            <div class="info-block-title">ℹ️ Complementares</div>
             <div class="info-grid">
-                ${infoItem('Responsável', inst.responsavel)}
-                ${infoItem('Departamento', inst.departamento)}
-                ${infoItem('Periodicidade', inst.periodicidade ? inst.periodicidade + ' meses' : null)}
-                ${infoItem('Criticidade', inst.criticidade)}
-                ${infoItem('Status', inst.status)}
+                ${editField('Responsável', inst.responsavel, 'responsavel', idx)}
+                ${editField('Departamento', inst.departamento, 'departamento', idx)}
+                ${editField('Criticidade', inst.criticidade, 'criticidade', idx)}
+                ${editField('Regra Decisão', inst.regra_decisao, 'regra_decisao', idx)}
             </div>
         </div>`;
-
-        // Grandezas
-        if (inst.grandezas && Array.isArray(inst.grandezas) && inst.grandezas.length > 0) {
-            html += `<div class="info-block">
-                <div class="info-block-title">Grandezas (${inst.grandezas.length})</div>`;
-
-            inst.grandezas.forEach((g, gi) => {
-                html += `
-                <div class="grandeza-block">
-                    <div class="grandeza-block-title">Grandeza ${gi + 1}</div>
-                    ${g.servicos && g.servicos.length > 0 ? `
-                        <div class="grandeza-tags">
-                            ${g.servicos.map(s => `<span class="grandeza-tag">${s}</span>`).join('')}
-                        </div>
-                    ` : ''}
-                    <div class="info-grid">
-                        ${infoItem('Faixa Nominal', g.faixa_nominal)}
-                        ${infoItem('Unidade', g.unidade)}
-                        ${infoItem('Resolução', g.resolucao)}
-                        ${infoItem('Tolerância', g.tolerancia_processo)}
-                        ${infoItem('Critério', g.criterio_aceitacao)}
-                        ${infoItem('Faixa de Uso', g.faixa_uso)}
-                        ${infoItem('Classe/Norma', g.classe_norma)}
-                        ${infoItem('Classificação', g.classificacao)}
-                    </div>
-                </div>`;
-            });
-
-            html += `</div>`;
-        }
 
         return html;
     }
 
+    // ── Handler de deleção de grandeza ──
+    window.__deleteGrandeza = function (instIdx, gi) {
+        if (!extractedResults[instIdx] || !extractedResults[instIdx].grandezas) return;
+        extractedResults[instIdx].grandezas.splice(gi, 1);
+        const el = document.getElementById(`grandeza-${instIdx}-${gi}`);
+        if (el) {
+            el.style.transition = 'opacity 0.2s, transform 0.2s';
+            el.style.opacity = '0';
+            el.style.transform = 'translateX(12px)';
+            setTimeout(() => {
+                el.remove();
+                const bloco = document.getElementById(`grandezas-block-${instIdx}`);
+                if (bloco) {
+                    bloco.querySelectorAll('.grandeza-block').forEach((b, i) => {
+                        const num = b.querySelector('.grandeza-num');
+                        if (num) num.textContent = i + 1;
+                    });
+                    const c = document.getElementById(`grandezas-count-${instIdx}`);
+                    if (c) c.textContent = extractedResults[instIdx].grandezas.length;
+                }
+            }, 220);
+        }
+    };
+
+
+    // Campo simples (read-only)
     function infoItem(label, value) {
         const displayValue = (value && value !== 'n/i' && value !== 'N/I') ? value : '<span style="color:#ccc;">—</span>';
         return `
@@ -476,25 +494,76 @@
             </div>`;
     }
 
-    function editableInfoItem(label, value, fieldName, idx) {
-        const displayValue = (value && value !== 'n/i' && value !== 'N/I') ? value : '';
+    // Campo editável com cor por criticidade
+    function editField(label, value, fieldName, idx, span) {
+        const baseField = fieldName.includes('[') ? fieldName.replace(/grandezas\[\d+\]\./, '') : fieldName;
+        const criticidade = CAMPOS_STATUS[baseField] || 'normal';
+        const vazio = !value || value === 'n/i' || value === 'N/I' || String(value).trim() === '';
+        const displayValue = vazio ? '' : String(value);
+
+        let borderClass = '';
+        let tag = '';
+        if (vazio) {
+            if (criticidade === 'critico') { borderClass = 'field-critico'; tag = '<span class="field-tag-critico">⛔</span>'; }
+            if (criticidade === 'importante') { borderClass = 'field-importante'; tag = '<span class="field-tag-importante">⚠️</span>'; }
+        }
+
+        // Campo grande (span full width)
+        const style = span === 'full' ? 'grid-column: 1 / -1;' : '';
+
         return `
-            <div class="info-item">
-                <span class="info-label">${label}</span>
-                <input class="info-input-edit"
+            <div class="info-item ${borderClass}" style="${style}">
+                <span class="info-label">${label} ${tag}</span>
+                <input class="info-input-edit ${borderClass}"
                        data-idx="${idx}"
                        data-field="${fieldName}"
-                       value="${displayValue}"
-                       placeholder="—" />
+                       value="${displayValue.replace(/"/g, '&quot;')}"
+                       placeholder="${vazio && criticidade === 'critico' ? 'Obrigatório' : vazio && criticidade === 'importante' ? 'Recomendado' : ''}"
+                       oninput="window.__onEditField && window.__onEditField(this)" />
             </div>`;
     }
 
+    // Expor handler de edição de grandezas
+    window.__onEditField = function (input) {
+        const idx = parseInt(input.dataset.idx);
+        const field = input.dataset.field;
+        const val = input.value;
+
+        // Campo simples: extractedResults[idx][campo]
+        if (!field.includes('[')) {
+            if (extractedResults[idx]) extractedResults[idx][field] = val;
+            return;
+        }
+
+        // Campo de grandeza: grandezas[gi].subField
+        const m = field.match(/grandezas\[(\d+)\]\.(.+)/);
+        if (m && extractedResults[idx] && extractedResults[idx].grandezas) {
+            const gi = parseInt(m[1]);
+            const sub = m[2];
+            if (extractedResults[idx].grandezas[gi]) {
+                extractedResults[idx].grandezas[gi][sub] = val;
+            }
+        }
+    };
+
+    function editableInfoItem(label, value, fieldName, idx) {
+        return editField(label, value, fieldName, idx);
+    }
+
     function collectEditedValues() {
+        // As edições já são aplicadas em tempo real via __onEditField
+        // Este método garante que os campos sem oninput também são coletados
         document.querySelectorAll('.info-input-edit').forEach(input => {
             const idx = parseInt(input.dataset.idx);
             const field = input.dataset.field;
-            if (!isNaN(idx) && field && extractedResults[idx] !== undefined) {
-                extractedResults[idx][field] = input.value.trim();
+            if (isNaN(idx) || !field) return;
+            if (!field.includes('[')) {
+                if (extractedResults[idx]) extractedResults[idx][field] = input.value.trim();
+            } else {
+                const m = field.match(/grandezas\[(\d+)\]\.(.+)/);
+                if (m && extractedResults[idx]?.grandezas?.[parseInt(m[1])]) {
+                    extractedResults[idx].grandezas[parseInt(m[1])][m[2]] = input.value.trim();
+                }
             }
         });
     }
@@ -534,38 +603,31 @@
             return;
         }
 
+        // Sempre coleta edições (inclui grandezas deletadas) ANTES de validar
+        collectEditedValues();
+
         // 1. Validação de campos obrigatórios
-        const pendencias = typeof validatingCamposGocal === 'function'
-            ? validarCamposGocal(extractedResults)
-            : (window.validarCamposGocal ? window.validarCamposGocal(extractedResults) : []);
+        const pendencias = window.validarCamposGocal ? window.validarCamposGocal(extractedResults) : [];
 
         if (pendencias.length > 0) {
-            // Abre modal para correção
             if (window.ValidationModal) {
                 window.ValidationModal.open(extractedResults, pendencias, (updates) => {
-                    // Callback: Usuário corrigiu e confirmou
-
-                    // Aplica correções no array principal
+                    // Aplica correções do modal no array principal
                     Object.keys(updates).forEach(idx => {
                         const fields = updates[idx];
                         Object.keys(fields).forEach(key => {
                             extractedResults[idx][key] = fields[key];
                         });
                     });
-
-                    // Tenta inserir novamente
+                    // Coleta edições dos cards mais uma vez (caso usuário tenha editado após abrir modal)
+                    collectEditedValues();
                     executarInsercaoBanco();
                 });
                 return;
-            } else {
-                console.warn('ValidationModal não encontrado, prosseguindo sem validar...');
             }
         }
 
-        // Coleta edições feitas nos campos antes de inserir
-        collectEditedValues();
-
-        // Se passar direto, insere
+        // Sem pendências: insere direto
         executarInsercaoBanco();
     });
 
