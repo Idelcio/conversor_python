@@ -246,56 +246,88 @@ def chat_extrair():
                 'message': 'Falha ao analisar o PDF. Verifique se e um documento valido.'
             })
 
-    # 2. Se e mensagem de texto, usa chat OpenAI
+    # 2. Se é mensagem de texto, usa chat
     if message:
         print(f"[MSG] {message}")
 
         dados = extracted_cache.get(session_id, [])
+        msg_lower = message.lower()
 
-        # Comando especial para mostrar dados
-        if dados and ('extrair tudo' in message.lower() or 'mostrar tudo' in message.lower()):
-            return jsonify({
-                'success': True,
-                'message': 'Dados extraidos:',
-                'instrumentos': dados
-            })
+        # ── Comando: mostrar dados estruturados (cards) ──────────────────
+        if dados and any(k in msg_lower for k in ['extrair tudo', 'mostrar tudo', 'mostrar dados', 'exibir dados']):
+            return jsonify({'success': True, 'message': 'Dados extraidos:', 'instrumentos': dados})
 
-        # Chat livre com OpenAI
+        # ── Comando: mostrar tabelas de grandezas ─────────────────────────
+        if dados and any(k in msg_lower for k in ['tabela', 'grandeza', 'resultado', 'mostrar tabela', 'ver tabela', 'listar tabela']):
+            linhas = []
+            for i, inst in enumerate(dados):
+                nome = inst.get('nome') or inst.get('instrumento') or f'Instrumento {i+1}'
+                tag  = inst.get('identificacao') or 'S/N'
+                grandezas = inst.get('grandezas') or []
+                linhas.append(f"### {i+1}. {nome} — `{tag}`\n")
+                if grandezas:
+                    linhas.append("| Faixa | Unidade | Resolução | Tolerância | Critério | Incerteza |")
+                    linhas.append("|---|---|---|---|---|---|")
+                    for g in grandezas:
+                        def _v(k): return str(g.get(k) or '—')
+                        linhas.append(f"| {_v('faixa_nominal')} | {_v('unidade')} | {_v('resolucao')} | {_v('tolerancia_processo')} | {_v('criterio_aceitacao')} | {_v('incerteza')} |")
+                else:
+                    linhas.append("_Sem grandezas registradas._")
+                linhas.append("")
+
+            tabela_md = "\n".join(linhas) if linhas else "Nenhum dado extraído ainda."
+            return jsonify({'success': True, 'message': tabela_md})
+
+        # ── Chat livre com OpenAI ─────────────────────────────────────────
         try:
             contexto = ""
             if dados:
-                contexto = f"\n\nDADOS EXTRAIDOS:\n{json.dumps(dados, ensure_ascii=False, indent=2)}"
+                # Resumo compacto em vez de JSON bruto
+                resumo = []
+                for i, inst in enumerate(dados):
+                    nome = inst.get('nome') or 'Instrumento'
+                    tag  = inst.get('identificacao') or 'S/N'
+                    cert = inst.get('numero_certificado') or '—'
+                    lab  = inst.get('laboratorio_responsavel') or inst.get('laboratorio') or '—'
+                    data = inst.get('data_calibracao') or '—'
+                    n_g  = len(inst.get('grandezas') or [])
+                    resumo.append(f"  {i+1}. {nome} (Tag: {tag}) | Cert: {cert} | Lab: {lab} | Data: {data} | Grandezas: {n_g}")
+                contexto = "\n\nDADOS EXTRAÍDOS DO PDF:\n" + "\n".join(resumo)
 
-            prompt = f"""Voce e o Metron, um assistente inteligente.
+            prompt = f"""Voce e o Metron, assistente de metrologia da Gocal.
 
-PERGUNTA: "{message}"
+PERGUNTA DO USUARIO: "{message}"
 {contexto}
 
-Responda de forma direta e util."""
+REGRAS DE RESPOSTA:
+1. NUNCA mostre JSON bruto ou código.
+2. Se pedir tabela/grandezas, diga ao usuário para usar o comando "mostrar tabelas".
+3. Use Markdown para formatar (negrito, listas, tabelas Markdown quando necessario).
+4. Responda em português, de forma direta e técnica.
+5. Se não souber, diga que não encontrou a informação no documento."""
 
-            # Lógica Hibrida (Gemini ou OpenAI)
             if hasattr(extractor, 'ask'):
                 resposta = extractor.ask(prompt)
             else:
-                client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+                from openai import OpenAI as _OAI
+                client = _OAI(api_key=os.getenv('OPENAI_API_KEY'))
                 completion = client.chat.completions.create(
                     model="gpt-4o",
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt}
+                        {"role": "user",   "content": prompt}
                     ]
                 )
-
                 resposta = completion.choices[0].message.content
+
             return jsonify({'success': True, 'message': resposta})
 
         except Exception as e:
             error_msg = str(e)
             if "429" in error_msg:
-                return jsonify({'success': True, 'message': '⏳ **Sistema sobrecarregado.** Atingimos o limite de velocidade da IA. Por favor, aguarde 15 segundos e tente novamente.'})
-            
+                return jsonify({'success': True, 'message': '⏳ **Sistema sobrecarregado.** Aguarde 15 segundos e tente novamente.'})
             print(f"[ERRO] Chat: {e}")
-            return jsonify({'success': True, 'message': f'Ocorreu um erro ao processar: {error_msg}'})
+            return jsonify({'success': True, 'message': f'Ocorreu um erro: {error_msg}'})
 
     return jsonify({'success': False, 'message': 'Envie uma mensagem ou um PDF.'})
 
@@ -311,8 +343,10 @@ def chat_mensagem():
     message = data.get('message', '')
     req_user_id = data.get('user_id') or session.get('gocal_user_id') or ''
     req_funcionario_id = data.get('funcionario_id') or session.get('gocal_funcionario_id') or ''
+    lat = data.get('lat')
+    lon = data.get('lon')
 
-    print(f"[CHAT-MSG] Session: {session_id[:8]}... Msg: {message} | user_id={req_user_id}")
+    print(f"[CHAT-MSG] Session: {session_id[:8]}... Msg: {message} | user_id={req_user_id} | geo={lat},{lon}")
 
     dados = extracted_cache.get(session_id, [])
 
@@ -330,7 +364,89 @@ def chat_mensagem():
             del extracted_cache[session_id]
         return jsonify({'success': True, 'message': 'Sessão limpa! Pode enviar um novo arquivo.'})
 
-    # Chat normal com GPT-4o
+    msg_lower = message.lower()
+
+    # ── Tabelas de grandezas direto do cache ─────────────────────────────
+    tabela_kws = ['tabela', 'tabelas', 'grandeza', 'grandezas',
+                  'resultado', 'resultados', 'mostrar tabela', 'ver tabela']
+    if dados and any(k in msg_lower for k in tabela_kws):
+        linhas = []
+        for i, inst in enumerate(dados):
+            nome = inst.get('nome') or inst.get('instrumento') or f'Instrumento {i+1}'
+            tag  = inst.get('identificacao') or 'S/N'
+            grandezas = inst.get('grandezas') or []
+            linhas.append(f"### {i+1}. {nome} — `{tag}`\n")
+            if grandezas:
+                linhas.append("| Faixa | Unidade | Resolução | Tolerância | Critério | Incerteza |")
+                linhas.append("|---|---|---|---|---|---|")
+                for g in grandezas:
+                    def _v(k, _g=g): return str(_g.get(k) or '—')
+                    linhas.append(f"| {_v('faixa_nominal')} | {_v('unidade')} | {_v('resolucao')} | {_v('tolerancia_processo')} | {_v('criterio_aceitacao')} | {_v('incerteza')} |")
+            else:
+                linhas.append("_Sem grandezas registradas._")
+            linhas.append("")
+        return jsonify({
+            'success': True,
+            'message': "\n".join(linhas) or "Nenhum dado extraído ainda.",
+            'token_usage': extractor.token_usage if extractor else {}
+        })
+
+    # ── Gráfico de erros de indicação ────────────────────────────────────
+    grafico_kws = [
+        'grafico', 'gráfico', 'chart', 'plot', 'plotar',
+        'erro de indicacao', 'erro de indicação',
+        'erros de indicacao', 'erros de indicação',
+        'indicacao', 'indicação', 'desvio', 'mostrar erro',
+    ]
+    if any(k in msg_lower for k in grafico_kws):
+        if not dados:
+            return jsonify({'success': True,
+                'message': 'Para gerar o gráfico, carregue o **PDF do certificado** primeiro. 📄'})
+        # Monta contexto compacto com grandezas para o prompt do gráfico
+        ctx_grafico = ""
+        for inst in dados:
+            nome = inst.get('nome', 'Instrumento')
+            ctx_grafico += f"\nInstrumento: {nome}\n"
+            for g in (inst.get('grandezas') or []):
+                ctx_grafico += f"  faixa={g.get('faixa_nominal')} resultado={g.get('resultado')} tolerancia={g.get('tolerancia_processo')} unidade={g.get('unidade')}\n"
+        prompt_g = f"""Voce e o Metron. O usuario quer um GRAFICO dos dados de calibracao.
+
+DADOS DISPONIVEIS:
+{ctx_grafico}
+
+TAREFA: Extraia os pontos de calibracao (valor nominal e erro de indicacao) e retorne SOMENTE este JSON:
+{{"message": "Aqui está o gráfico!", "mostrar_grafico": {{"titulo": "Erro de Indicação", "x_label": "Valor Nominal", "y_label": "Erro", "pontos": [{{"x": 0.0, "y": 0.000, "ie": 0.007}}]}}}}
+
+REGRAS:
+- "pontos": todos os pares da tabela (x=nominal, y=erro_de_indicacao)
+- "ie": tolerância máxima (±IE); use 0 se não encontrar
+- Substitua "Valor Nominal" e "Erro" pelas unidades reais do instrumento
+- Retorne APENAS o JSON. Nenhum texto extra."""
+        try:
+            if hasattr(extractor, 'ask'):
+                resp_g = extractor.ask(prompt_g)
+            else:
+                from openai import OpenAI as _OAI
+                client = _OAI(api_key=os.getenv('OPENAI_API_KEY'))
+                comp = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": prompt_g}]
+                )
+                resp_g = comp.choices[0].message.content
+            clean = re.sub(r'```json|```', '', resp_g).strip()
+            jm = re.search(r'\{.*\}', clean, re.DOTALL)
+            if jm:
+                gj = json.loads(jm.group(0))
+                if 'mostrar_grafico' in gj:
+                    return jsonify({'success': True,
+                        'message': gj.get('message', 'Gráfico gerado!'),
+                        'grafico': gj['mostrar_grafico'],
+                        'token_usage': extractor.token_usage if extractor else {}})
+        except Exception as eg:
+            print(f"[GRAFICO] Erro: {eg}")
+        return jsonify({'success': True,
+            'message': 'Não consegui gerar o gráfico. Verifique se o certificado tem tabela de resultados.'})
+
     try:
         contexto = ""
 
@@ -388,8 +504,43 @@ def chat_mensagem():
         }
 
         # Detecta se o usuario quer um grafico
-        grafico_keywords = ['grafico', 'gráfico', 'chart', 'plot', 'plotar', 'mostrar grafico', 'gerar grafico']
+        grafico_keywords = [
+            'grafico', 'gráfico', 'chart', 'plot', 'plotar',
+            'mostrar grafico', 'gerar grafico',
+            'erro de indicacao', 'erro de indicação',
+            'erros de indicacao', 'erros de indicação',
+            'indicacao', 'indicação', 'desvio', 'mostrar erro',
+        ]
+        tabela_keywords = [
+            'tabela', 'tabelas', 'grandeza', 'grandezas',
+            'resultado', 'resultados', 'mostrar tabela',
+            'ver tabela', 'listar tabela', 'dados de calibracao',
+        ]
         is_grafico_request = any(kw in message.lower() for kw in grafico_keywords)
+        is_tabela_request  = any(kw in message.lower() for kw in tabela_keywords)
+
+        # ── Tabelas de grandezas direto do cache ──────────────────────────
+        if is_tabela_request and dados:
+            linhas = []
+            for i, inst in enumerate(dados):
+                nome = inst.get('nome') or inst.get('instrumento') or f'Instrumento {i+1}'
+                tag  = inst.get('identificacao') or 'S/N'
+                grandezas = inst.get('grandezas') or []
+                linhas.append(f"### {i+1}. {nome} — `{tag}`\n")
+                if grandezas:
+                    linhas.append("| Faixa | Unidade | Resolução | Tolerância | Critério | Incerteza |")
+                    linhas.append("|---|---|---|---|---|---|")
+                    for g in grandezas:
+                        def _v(k, _g=g): return str(_g.get(k) or '—')
+                        linhas.append(f"| {_v('faixa_nominal')} | {_v('unidade')} | {_v('resolucao')} | {_v('tolerancia_processo')} | {_v('criterio_aceitacao')} | {_v('incerteza')} |")
+                else:
+                    linhas.append("_Sem grandezas registradas._")
+                linhas.append("")
+            return jsonify({
+                'success': True,
+                'message': "\n".join(linhas) or "Nenhum dado extraído ainda.",
+                'token_usage': extractor.token_usage if extractor else {}
+            })
 
         # Se quer gráfico mas não tem dados do PDF na sessão, responde sem chamar a IA
         if is_grafico_request and not dados:
@@ -439,10 +590,27 @@ INSTRUCOES:
    - Use "filtro_a_vencer": true para instrumentos que vencem nos proximos 30 dias
    - CRITICO: retorne SOMENTE o JSON, sem explicacao, sem introducao, sem texto adicional
 
-4. Se o usuario pedir para BUSCAR LABORATORIOS (ex: "onde calibro multimetro?", "qual lab faz paquimetro?", "buscar laboratorio de balanca") — retorne APENAS este JSON puro:
-   {{"message": "Buscando laboratórios...", "buscar_laboratorios": {{"termo": "multimetro"}}}}
-   - Tente identificar o nome correto do instrumento (e.g. se o usuario digitar errado, corrija)
-   - CRITICO: retorne SOMENTE o JSON
+4. Se o usuario fizer QUALQUER pergunta sobre LABORATORIOS DE CALIBRACAO (encontrar labs, responsavel, contato, RBC, acreditacao, etc):
+   Retorne APENAS este JSON:
+   {{"message": "Buscando...", "buscar_laboratorios": {{"termo": "<termo>", "tipo": "<tipo>"}}}}
+
+   "tipo" deve ser:
+   - "instrumento" → quer labs para calibrar um instrumento (ex: "paquimetro", "multimetro")
+   - "nome_lab"    → menciona nome de um lab (ex: "A E R Balancas")
+   - "rbc"         → menciona numero de acreditacao (ex: "850", "75")
+   - "livre"       → qualquer outra coisa sobre labs
+
+   "termo" deve ser:
+   - instrumento: nome corrigido do instrumento
+   - nome_lab: nome do lab EXATAMENTE como o usuario escreveu (corrija so ortografia basica)
+   - rbc: APENAS O NUMERO (ex: "850") sem letras
+   - livre: frase do usuario corrigida
+
+   EXEMPLOS:
+   - "onde calibro multimetro?" → {{"termo": "multimetro", "tipo": "instrumento"}}
+   - "A E R Balancas quem e o responsavel?" → {{"termo": "A E R Balancas", "tipo": "nome_lab"}}
+   - "responsavel pelo lab acreditacao 850" → {{"termo": "850", "tipo": "rbc"}}
+   CRITICO: retorne SOMENTE o JSON
 
 3. Para qualquer outra pergunta (sobre o sistema, como usar, etc.), responda em texto normal.
 """
@@ -524,11 +692,14 @@ INSTRUCOES:
                 if 'buscar_laboratorios' in resp_json:
                     filtros_lab = resp_json['buscar_laboratorios']
                     termo_lab = filtros_lab.get('termo', '')
-                    # Se vier lat/lon na sessão (opcional)
+                    tipo_lab  = filtros_lab.get('tipo', 'livre')
+                    print(f"[CHAT-LAB] termo='{termo_lab}' tipo='{tipo_lab}'")
+                    # Busca e formata em texto (Passando lat/lon se disponivel)
+                    texto_labs = _buscar_laboratorios_texto(termo_lab, lat=lat, lon=lon, tipo=tipo_lab)
                     return jsonify({
                         'success': True,
-                        'message': resp_json.get('message', 'Buscando laboratórios...'),
-                        'buscar_laboratorios': {'termo': termo_lab},
+                        'message': texto_labs,
+                        'buscar_laboratorios': {'termo': termo_lab}, # Mantém para cards se o JS quiser
                         'token_usage': extractor.token_usage if extractor else {}
                     })
         except:
@@ -601,10 +772,133 @@ def _buscar_instrumentos_texto(user_id, filtros):
             linhas.append(f"• **{r['identificacao']}** — {r['nome']} | {r['status']} | Próx. calib.: {prox}")
 
         return "\n".join(linhas)
-
     except Exception as e:
         print(f"[ERRO] _buscar_instrumentos_texto: {e}")
         return "Erro ao buscar instrumentos no banco de dados."
+
+
+
+
+def _buscar_laboratorios_texto(termo, lat=None, lon=None, tipo='livre'):
+    """Consulta o banco e retorna resposta formatada em texto para o chat.
+    tipo: 'instrumento', 'nome_lab', 'rbc', 'livre'
+    """
+    print(f"[LAB-TEXTO] termo='{termo}' tipo='{tipo}' lat={lat} lon={lon}")
+    try:
+        labs_detalhe = []
+        labs_lista   = []
+
+        if tipo in ('rbc', 'nome_lab'):
+            # Busca direta na tabela laboratorio
+            labs_detalhe = _consultar_detalhes_laboratorio(termo, lat=lat, lon=lon)
+
+        elif tipo == 'instrumento':
+            # Busca por escopo de calibração
+            labs_lista = _buscar_laboratorios_para_instrumento(termo, lat=lat, lon=lon, limit=5)
+
+        else:  # livre
+            # Tenta instrumento primeiro, depois nome de lab
+            labs_lista = _buscar_laboratorios_para_instrumento(termo, lat=lat, lon=lon, limit=5)
+            if not labs_lista:
+                labs_detalhe = _consultar_detalhes_laboratorio(termo, lat=lat, lon=lon)
+
+        # FORMATAÇÃO: detalhes de lab específico
+        if labs_detalhe:
+            linhas = []
+            for l in labs_detalhe:
+                dist = f" ({l['distancia_km']}km)" if l.get('distancia_km') is not None else ""
+                linhas.append(f"Aqui estão os dados do laboratório **{l['nome_laboratorio']}** [RBC {l.get('acreditacao_num', '')}]:\n")
+                linhas.append(f"• **Responsável:** {l.get('gerente_tecnico') or 'Não informado'}")
+                linhas.append(f"• **Localização:** {l.get('endereco', '')} — {l.get('cidade', '')}/{l.get('uf', '')}{dist}")
+                linhas.append(f"• **E-mail:** {l.get('email', 'não informado')}")
+                linhas.append(f"• **Telefone:** {l.get('telefone', 'não informado')}")
+                if l.get('situacao'): linhas.append(f"• **Situação:** {l['situacao']}")
+                linhas.append("")
+            return "\n".join(linhas).strip()
+
+        # FORMATAÇÃO: lista de labs por instrumento
+        if labs_lista:
+            linhas = [f"Encontrei **{len(labs_lista)}** laboratório(s) para **{termo}**:\n"]
+            for l in labs_lista:
+                dist = f" ({l['distancia_km']}km)" if l.get('distancia_km') is not None else ""
+                acred = f" [RBC {l['acreditacao_num']}]" if l.get('acreditacao_num') else ""
+                linhas.append(f"• **{l['nome_laboratorio']}**{dist}{acred} - {l['cidade']}/{l['uf']}")
+            return "\n".join(linhas)
+
+        return f"Não encontrei laboratórios para **{termo}** no banco. Tente outro termo."
+
+    except Exception as e:
+        print(f"[ERRO] _buscar_laboratorios_texto: {e}")
+        return "Erro ao buscar laboratórios no banco."
+
+def _consultar_detalhes_laboratorio(termo, lat=None, lon=None):
+    """Consulta dados diretos da tabela laboratorio pelo nome ou RBC.
+    Estratégia: tenta por RBC, depois LIKE completo, depois palavras individuais."""
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+
+        lat_v  = float(lat)  if lat  else 0
+        lon_v  = float(lon)  if lon  else 0
+
+        base_select = """
+            SELECT id, nome_laboratorio, razao_social, acreditacao_num, uf, cidade,
+                   email, telefone, fax, gerente_tecnico, endereco, bairro, cep,
+                   situacao, latitude, longitude, grupo_servico,
+                   ROUND((6371 * ACOS(GREATEST(-1, LEAST(1,
+                       COS(RADIANS(%s)) * COS(RADIANS(IFNULL(latitude,0))) *
+                       COS(RADIANS(IFNULL(longitude,0)) - RADIANS(%s)) +
+                       SIN(RADIANS(%s)) * SIN(RADIANS(IFNULL(latitude,0)))
+                   )))), 0) AS distancia_km
+            FROM laboratorio
+        """
+        params_geo = (lat_v, lon_v, lat_v)
+
+        # 1. Por número RBC (ex: "RBC 850" ou "850")
+        rbc_match = re.search(r'\b(\d+)\b', termo)
+        if rbc_match:
+            rbc_num = rbc_match.group(1)
+            print(f"[LAB-DETALHE] Tentando por RBC={rbc_num}")
+            cur.execute(base_select + " WHERE acreditacao_num = %s LIMIT 1",
+                        params_geo + (rbc_num,))
+            res = cur.fetchall()
+            print(f"[LAB-DETALHE] Resultado RBC: {len(res)} linha(s)")
+            if res:
+                cur.close(); conn.close()
+                return res
+
+        # 2. LIKE completo no nome ou razao social
+        print(f"[LAB-DETALHE] Tentando LIKE '{termo}'")
+        cur.execute(base_select + " WHERE nome_laboratorio LIKE %s OR razao_social LIKE %s LIMIT 1",
+                    params_geo + (f'%{termo}%', f'%{termo}%'))
+        res = cur.fetchall()
+        print(f"[LAB-DETALHE] Resultado LIKE: {len(res)} linha(s)")
+        if res:
+            cur.close(); conn.close()
+            return res
+
+        # 3. Cada palavra com >= 3 chars como condição OR
+        palavras = [p for p in re.split(r'\s+', termo) if len(p) >= 3]
+        print(f"[LAB-DETALHE] Tentando por palavras: {palavras}")
+        if palavras:
+            conditions = " OR ".join(["nome_laboratorio LIKE %s OR razao_social LIKE %s"] * len(palavras))
+            word_params = []
+            for p in palavras:
+                word_params += [f'%{p}%', f'%{p}%']
+            cur.execute(base_select + f" WHERE {conditions} LIMIT 3",
+                        params_geo + tuple(word_params))
+            res = cur.fetchall()
+            print(f"[LAB-DETALHE] Resultado palavras: {len(res)} linha(s)")
+            if res:
+                cur.close(); conn.close()
+                return res
+
+        cur.close(); conn.close()
+        print(f"[LAB-DETALHE] Nenhum resultado para '{termo}'")
+        return []
+    except Exception as e:
+        print(f"[ERRO] _consultar_detalhes_laboratorio: {e}")
+        return []
 
 
 # ============================================================
@@ -1338,56 +1632,40 @@ def inserir_banco():
                 'motivo_calibracao': motivo_calibracao
             })
 
-            # Busca grandezas (Simplificado como solicitado)
-            # Tenta pegar direto da chave 'grandezas' ou 'tabelas'
-            lista_grandezas = buscar_valor('grandezas', inst) or buscar_valor('tabelas', inst) or []
-            
-            if not isinstance(lista_grandezas, list):
-                lista_grandezas = []
-
-            for grandeza in lista_grandezas:
-                # Mapeia campos da grandeza 
-                def get_g(key, default=None):
-                    # Tenta direto, depois tenta recursivo se for dict
-                    val = grandeza.get(key)
-                    if val is None and isinstance(grandeza, dict):
-                         # Pequeno helper local para buscar em profundidade rasa
-                         for k, v in grandeza.items():
-                             if isinstance(v, dict) and key in v:
-                                 return v[key]
-                    return val or default
-
-                sql_g = """
-                    INSERT INTO grandezas (
-                        instrumento_id, servicos, tolerancia_processo, tolerancia_simetrica,
-                        unidade, resolucao, criterio_aceitacao, regra_decisao_id,
-                        faixa_nominal, classe_norma, classificacao, faixa_uso,
-                        created_at, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-                """
-                
-                tolerancia = get_g('tolerancia_processo') or get_g('tolerancia') or get_g('erro_maximo')
-                unidade = get_g('unidade')
-                resolucao = get_g('resolucao')
-                faixa_nominal = get_g('faixa_nominal') or get_g('faixa') or get_g('valor_nominal')
-
-                
-                valores_g = (
-                    instrumento_id,
-                    json.dumps(get_g('servicos', []) if isinstance(get_g('servicos'), list) else []),
-                    tolerancia,
-                    get_g('tolerancia_simetrica', True),
-                    unidade,
-                    resolucao,
-                    get_g('criterio_aceitacao'),
-                    get_g('regra_decisao_id', 1),
-                    faixa_nominal,
-                    get_g('classe_norma'),
-                    get_g('classificacao'),
-                    get_g('faixa_uso')
-                )
-                cursor.execute(sql_g, valores_g)
-                total_grandezas += 1
+            # ── GRANDEZAS: desativado temporariamente (segunda ordem) ──────────
+            # lista_grandezas = buscar_valor('grandezas', inst) or buscar_valor('tabelas', inst) or []
+            # if not isinstance(lista_grandezas, list):
+            #     lista_grandezas = []
+            # for grandeza in lista_grandezas:
+            #     def get_g(key, default=None):
+            #         val = grandeza.get(key)
+            #         if val is None and isinstance(grandeza, dict):
+            #             for k, v in grandeza.items():
+            #                 if isinstance(v, dict) and key in v:
+            #                     return v[key]
+            #         return val or default
+            #     sql_g = """
+            #         INSERT INTO grandezas (
+            #             instrumento_id, servicos, tolerancia_processo, tolerancia_simetrica,
+            #             unidade, resolucao, criterio_aceitacao, regra_decisao_id,
+            #             faixa_nominal, classe_norma, classificacao, faixa_uso,
+            #             created_at, updated_at
+            #         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            #     """
+            #     tolerancia  = get_g('tolerancia_processo') or get_g('tolerancia') or get_g('erro_maximo')
+            #     unidade     = get_g('unidade')
+            #     resolucao   = get_g('resolucao')
+            #     faixa_nominal = get_g('faixa_nominal') or get_g('faixa') or get_g('valor_nominal')
+            #     valores_g = (
+            #         instrumento_id,
+            #         json.dumps(get_g('servicos', []) if isinstance(get_g('servicos'), list) else []),
+            #         tolerancia, get_g('tolerancia_simetrica', True), unidade, resolucao,
+            #         get_g('criterio_aceitacao'), get_g('regra_decisao_id', 1),
+            #         faixa_nominal, get_g('classe_norma'), get_g('classificacao'), get_g('faixa_uso')
+            #     )
+            #     cursor.execute(sql_g, valores_g)
+            #     total_grandezas += 1
+            # ────────────────────────────────────────────────────────────────────
 
         conn.commit()
         cursor.close()

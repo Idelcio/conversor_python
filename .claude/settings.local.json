@@ -17,7 +17,12 @@
       "Bash(git add:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: adiciona extrator OpenAI Vision com analise livre de PDFs\n\n- Adiciona app_openai.py com Flask server na porta 5001\n- Cria modulo openai_extractor/ com GPT-4o Vision para OCR\n- Adiciona template gocal_chat.html com interface de chat moderna\n- Implementa analise livre de documentos \\(sem campos fixos\\)\n- Adiciona botao \"Salvar Edicoes\" no topo e final do editor JSON\n- Remove restricoes de seguranca para chat livre com IA\n- Corrige encoding de emojis para Windows \\(cp1252\\)\n- Adiciona tratamento para JSON com markdown \\(```json\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git push:*)",
-      "Bash(ls -la *.md *.py)"
+      "Bash(ls -la *.md *.py)",
+      "Bash(nginx:*)",
+      "Bash(sc query:*)",
+      "Bash(Get-Service nginx)",
+      "Bash(ssh:*)",
+      "Bash(cmd.exe /c \"dir C:\\\\Users\\\\Forest\\\\Projetos\\\\Labster\\\\Python\\\\leitor_conversor\\\\ 2>&1\")"
     ]
   }
 }

@@ -471,13 +471,22 @@ async function sendMessage() {
             }
         } else {
             // MODO CHAT (Apenas Texto)
+
+            // Proativamente tenta pegar localizacao se parecer busca de lab
+            let geo = _userGeoCache;
+            if (!geo && _isLabSearch(message)) {
+                geo = await _getUserGeo();
+            }
+
             const response = await fetch('/chat-mensagem', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     message: message,
                     user_id: currentUserId || '',
-                    funcionario_id: window.currentFuncionarioId || ''
+                    funcionario_id: window.currentFuncionarioId || '',
+                    lat: geo ? geo.lat : null,
+                    lon: geo ? geo.lon : null
                 })
             });
 
@@ -512,8 +521,13 @@ async function sendMessage() {
 
             // Busca de Laboratórios via IA
             if (data.buscar_laboratorios) {
-                // Se a IA detectou a busca, chama a função passando a mensagem original ou o termo
-                await _buscarEExibirLaboratorios(message, data.buscar_laboratorios.termo);
+                const tipoLab = data.buscar_laboratorios.tipo || 'livre';
+                // Para busca por instrumento/livre, exibe cards visuais adicionais
+                // Para rbc/nome_lab a mensagem já contém tudo, não precisa dos cards
+                if (tipoLab === 'instrumento' || tipoLab === 'livre') {
+                    await _buscarEExibirLaboratorios(message, data.buscar_laboratorios.termo);
+                }
+                // Para rbc e nome_lab, a mensagem do backend já mostra os detalhes completos
             }
         }
 
@@ -1059,19 +1073,29 @@ async function insertarNoBanco() {
         return;
     }
 
-    // Valida campos obrigatorios do Gocal antes de inserir
-    const pendencias = validarCamposGocal(extractedData);
+    // Valida campos obrigatorios usando o módulo de validação
+    const validar = window.validarCamposGocal || validarCamposGocal;
+    const pendencias = validar ? validar(extractedData) : [];
 
     if (pendencias.length > 0) {
-        // Mostra formulario e espera o usuario preencher
-        mostrarFormularioCalibracao(pendencias, () => {
-            // Callback: usuario preencheu, agora insere de verdade
-            executarInsercao();
-        });
-        return;
+        // Conta somente erros críticos
+        const totalCriticos = pendencias.reduce((n, p) => n + p.erros.length, 0);
+
+        if (totalCriticos > 0 && window.ValidationModal) {
+            // Abre modal rico para o usuário corrigir e confirmar
+            window.ValidationModal.open(extractedData, pendencias, (_updates) => {
+                executarInsercao();
+            });
+            return;
+        }
+        // Se só tem avisos (não críticos), permite inserir com toast
+        if (totalCriticos === 0) {
+            const avisos = pendencias.reduce((n, p) => n + p.avisos.length, 0);
+            addBotMessage(`⚠️ ${avisos} campo(s) recomendado(s) não preenchido(s), mas continuando com a inserção.`);
+        }
     }
 
-    // Tudo valido, insere direto
+    // Tudo ok, insere direto
     executarInsercao();
 }
 
