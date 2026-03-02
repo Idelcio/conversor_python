@@ -64,3 +64,6 @@ ACESSO_VPS.md
 # Uploads (arquivos temporários)
 uploads/
 *.pdf
+
+# Agents (workflows locais)
+.agents/
