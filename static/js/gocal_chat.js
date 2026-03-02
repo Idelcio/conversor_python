@@ -318,7 +318,8 @@ function handleFiles(files) {
             `color:#fff; border-radius:8px; text-decoration:none; font-weight:600; font-size:13px; ` +
             `box-shadow: 0 4px 12px rgba(102,126,234,0.3);">` +
             `🚀 Abrir Processamento em Lote</a>` +
-            `<br><br><span style="font-size:12px; color:#888;">Ou continue aqui mesmo — os arquivos já estão carregados.</span>`
+            `<br><br><span style="font-size:12px; color:#888;">Ou continue aqui mesmo — os arquivos já estão carregados.</span>`,
+            true
         );
     }
 
