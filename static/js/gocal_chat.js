@@ -1,6 +1,7 @@
 let uploadedFiles = [];
 let extractedData = null;
 let sessionTokens = 0;
+let _pendingQuery = null;
 
 function updateTokenCounter(tokenData) {
     if (!tokenData) return;
@@ -19,6 +20,7 @@ let currentUserId = new URLSearchParams(window.location.search).get('user_id') |
 let currentFuncionarioId = new URLSearchParams(window.location.search).get('funcionario_id') || null;
 let currentPageContext = null;
 let metronBaseUrl = window.location.origin; // Atualizado pelo widget_loader via postMessage
+let hasPdfSessionContext = false; // Indica se o backend ja tem dados de PDF na sessao atual
 
 // Mapa de rotas amigaveis do Gocal
 function getPageLabel(path) {
@@ -139,6 +141,8 @@ const attachBtn = document.getElementById('attachBtn');
 // Contexto do PDF da pagina pai
 let contextPdfUrl = null;
 let lastPdfFile = null; // Guarda referencia ao ultimo PDF para criacao de calibracao
+let cachedPdfFile = null; // Mantem o ultimo PDF no widget para reutilizacao automatica
+let cachedPdfSource = null;
 
 window.addEventListener('message', (e) => {
     // Recebe URL do PDF detectado pelo widget
@@ -175,7 +179,12 @@ window.analyzeContextPDF = async function () {
 
     try {
         const formData = new FormData();
-        formData.append('pdf_url', contextPdfUrl);
+        const persistentPdf = await getPersistentPdfFile();
+        if (persistentPdf) {
+            formData.append('pdfs', persistentPdf);
+        } else {
+            formData.append('pdf_url', contextPdfUrl);
+        }
         formData.append('comando', 'analise completa com checklist');
 
         const response = await fetch('/upload-async', {
@@ -186,7 +195,7 @@ window.analyzeContextPDF = async function () {
         const data = await response.json();
 
         if (data.success) {
-            pollProgress(data.task_id);
+            pollProgress(data.task_id, message);
         } else {
             removeLastMessage();
             addBotMessage('❌ Erro ao baixar PDF: ' + data.message);
@@ -289,6 +298,9 @@ fileInput.addEventListener('change', (e) => {
 
 function handleFiles(files) {
     uploadedFiles = Array.from(files);
+    if (uploadedFiles.length > 0) {
+        rememberPdfInWidget(uploadedFiles[0], 'upload-manual');
+    }
 
     // SUGESTÃO DE LOTE SE > 3 PDFs
     if (uploadedFiles.length > 3) {
@@ -346,17 +358,18 @@ function limparArquivos() {
     document.getElementById('filesList').style.display = 'none';
     chatInput.placeholder = "Digite ou arraste um PDF...";
     fileInput.value = ""; // Limpa o input para permitir selecionar o mesmo arquivo de novo
+    // Nao limpa cachedPdfFile: ele permanece para reuso automatico no widget.
 }
 window.limparArquivos = limparArquivos;
 
 // Função renderFilesList removida pois foi substituída pelo feedback visual direto em handleFiles.
 
-// Chat handlers
-sendBtn.addEventListener('click', sendMessage);
+// Chat handlers — usa sendMessageV2 (suporta labs + delega para sendMessage quando tem arquivo)
+sendBtn.addEventListener('click', sendMessageV2);
 chatInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        sendMessage();
+        sendMessageV2();
     }
 });
 
@@ -398,6 +411,178 @@ function getPdfContentFromParent() {
     });
 }
 
+function rememberPdfInWidget(file, source = 'manual') {
+    if (!file) return;
+    cachedPdfFile = file;
+    cachedPdfSource = source;
+    lastPdfFile = file; // Mantem compatibilidade com fluxo de criacao de calibracao
+}
+
+async function getPersistentPdfFile() {
+    if (cachedPdfFile) return cachedPdfFile;
+    if (!contextPdfUrl) return null;
+
+    const pdfBlob = await getPdfContentFromParent();
+    const pdfFile = new File([pdfBlob], "documento_tela.pdf", { type: "application/pdf" });
+    rememberPdfInWidget(pdfFile, 'contexto-pagina');
+    return pdfFile;
+}
+
+function shouldRetryWithPersistentPdf(data) {
+    if (!data || !data.message) return false;
+    const msg = String(data.message).toLowerCase();
+    return (
+        msg.includes('carregue o **pdf') ||
+        msg.includes('carregue o pdf') ||
+        msg.includes('dados de medição precisam') ||
+        msg.includes('dados de medicao precisam')
+    );
+}
+
+function isSessionClearedResponse(data) {
+    if (!data || !data.message) return false;
+    const msg = String(data.message).toLowerCase();
+    return msg.includes('sessão limpa') || msg.includes('sessao limpa');
+}
+
+async function retryWithPersistentPdf(message) {
+    try {
+        const persistentPdf = await getPersistentPdfFile();
+        if (!persistentPdf) return false;
+
+        addBotMessage('📄 Reutilizando o PDF em cache do widget...');
+        addLoadingMessage();
+
+        const formData = new FormData();
+        formData.append('pdfs', persistentPdf);
+        formData.append('comando', message || 'resumo e analise geral');
+
+        const response = await fetch('/upload-async', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+            removeLastMessage();
+            addBotMessage('❌ Erro ao reutilizar PDF em cache: ' + (data.message || 'erro desconhecido'));
+            return false;
+        }
+
+        pollProgress(data.task_id);
+        return true;
+    } catch (err) {
+        removeLastMessage();
+        addBotMessage('❌ Falha ao reutilizar PDF em cache: ' + err);
+        return false;
+    }
+}
+
+// [NOVO] Função V2 para envio de mensagem suportando laboratórios
+// Pode ser chamada manualmente ou substituindo o listener do botão
+async function sendMessageV2() {
+    const message = chatInput.value.trim();
+    if (!message && uploadedFiles.length === 0 && !contextPdfUrl) return;
+
+    try {
+        // Se tiver arquivo ou precisar extrair PDF: delega completamente para sendMessage.
+        // sendMessage cuida do addUserMessage, addLoadingMessage, upload e comando (ex: grafico).
+        if (uploadedFiles.length > 0 || (contextPdfUrl && !hasPdfSessionContext)) {
+            return sendMessage();
+        }
+
+        // Fluxo Texto V2 (sem arquivo — labs, instrumentos, texto)
+        if (message) addUserMessage(message);
+        chatInput.value = '';
+        chatInput.style.height = 'auto';
+        addLoadingMessage();
+
+        // Tenta pegar localizacao proativamente se parecer busca de lab
+        let geo = _userGeoCache;
+        if (!geo && _isLabSearch(message)) {
+            geo = await _getUserGeo();
+        }
+
+        const _payload = {
+            message: message,
+            user_id: currentUserId || '',
+            funcionario_id: window.currentFuncionarioId || ''
+        };
+        if (geo) { _payload.lat = geo.lat; _payload.lon = geo.lon; }
+
+        const response = await fetch('/chat-mensagem-v2', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(_payload)
+        });
+
+        const data = await response.json();
+        removeLastMessage();
+
+        // Gráfico de calibração (prioridade máxima)
+        if (data.grafico) {
+            hasPdfSessionContext = true;
+            renderGraficoCalib(data.grafico);
+            return;
+        }
+
+        // Se veio labs_data, renderiza cards (não exibe texto redundante)
+        if (data.labs_data && data.labs_data.length > 0) {
+            _renderLaboratoriosCards(data.labs_data, data.termo_lab || '', data.por_distancia);
+        } else {
+            addBotMessage(data.message);
+        }
+
+        // Tratamento de Laboratórios (fallback tabela v2)
+        if (data.listar_laboratorios) {
+            await buscarEExibirLaboratoriosV2(data.listar_laboratorios);
+        }
+        
+        // Tratamento de Instrumentos (mantido)
+        if (data.listar_instrumentos) {
+            await buscarEExibirInstrumentos(data.listar_instrumentos);
+        }
+
+    } catch (error) {
+        console.error('Erro V2:', error);
+        removeLastMessage();
+        addBotMessage('Erro na comunicação V2.');
+    }
+}
+
+// [NOVO] Renderiza tabela de laboratórios
+async function buscarEExibirLaboratoriosV2(filtros) {
+    try {
+        const resp = await fetch(`/buscar-laboratorios-v2?termo=${encodeURIComponent(filtros.termo || '')}`);
+        const data = await resp.json();
+        
+        if (data.success && data.items && data.items.length > 0) {
+            let html = `<div style="margin-top:10px; font-size:12px;"><strong>🏢 Laboratórios Encontrados (${data.items.length}):</strong><br>`;
+            html += `<table style="width:100%; border-collapse:collapse; margin-top:5px;">`;
+            html += `<tr style="background:#eee;">
+                        <th style="text-align:left; padding:4px;">Nome</th>
+                        <th style="text-align:left; padding:4px;">Local</th>
+                        <th style="text-align:left; padding:4px;">Contato</th>
+                    </tr>`;
+            
+            data.items.forEach(lab => {
+                const local = [lab.cidade, lab.estado].filter(Boolean).join('/');
+                const contato = [lab.telefone, lab.email].filter(Boolean).join('<br>');
+                html += `<tr style="border-bottom:1px solid #ddd;">
+                    <td style="padding:4px; vertical-align:top;"><strong>${lab.nome}</strong></td>
+                    <td style="padding:4px; vertical-align:top;">${local || '-'}</td>
+                    <td style="padding:4px; vertical-align:top; font-size:11px;">${contato || '-'}</td>
+                </tr>`;
+            });
+            html += `</table></div>`;
+            addBotMessage(html, true);
+        } else {
+            addBotMessage(`⚠️ Nenhum laboratório encontrado para "${filtros.termo || ''}".`);
+        }
+    } catch (e) {
+        console.error("Erro ao buscar labs:", e);
+    }
+}
 
 async function sendMessage() {
     const message = chatInput.value.trim();
@@ -410,15 +595,8 @@ async function sendMessage() {
 
     addLoadingMessage();
 
-    // Palavras-chave que indicam novo processamento do PDF (força modo async)
-    const comandosExtracao = ['extrair', 'extrai', 'processar', 'analisar', 'analyze', 'resumo', 'resumir'];
-    const isComandoExtracao = !message || comandosExtracao.some(k => message.toLowerCase().includes(k));
-
-    // Se já extraiu dados e a mensagem é conversacional, usa o chat (mais barato e direto)
-    const jaExtraiu = extractedData && extractedData.length > 0;
-
     try {
-        if ((uploadedFiles.length > 0 || contextPdfUrl) && (!jaExtraiu || isComandoExtracao)) {
+        if (uploadedFiles.length > 0 || (contextPdfUrl && !hasPdfSessionContext && !cachedPdfFile)) {
             // MODO ASYNC (Upload com Progresso ou Contexto URL)
 
             // Mostra barras de progresso vazias se tiver arquivo fisico
@@ -431,7 +609,7 @@ async function sendMessage() {
 
             // 1. Adiciona arquivos fisicos (Upload Manual)
             if (uploadedFiles.length > 0) {
-                lastPdfFile = uploadedFiles[0]; // Guarda para calibracao
+                rememberPdfInWidget(uploadedFiles[0], 'upload-manual');
             }
             uploadedFiles.forEach(file => {
                 formData.append('pdfs', file);
@@ -441,10 +619,13 @@ async function sendMessage() {
             if (uploadedFiles.length === 0 && contextPdfUrl) {
                 addBotMessage('📥 Baixando documento da tela...');
                 try {
-                    // Pede ao pai o conteudo fisico (bypass CORS)
-                    const pdfBlob = await getPdfContentFromParent();
-                    const pdfFile = new File([pdfBlob], "documento_tela.pdf", { type: "application/pdf" });
-                    lastPdfFile = pdfFile; // Guarda para calibracao
+                    // Reusa PDF persistido do widget (ou baixa da pagina pai se ainda nao existe)
+                    const pdfFile = await getPersistentPdfFile();
+                    if (!pdfFile) {
+                        removeLastMessage();
+                        addBotMessage('⚠️ Nao encontrei PDF em cache nem no contexto da pagina.');
+                        return;
+                    }
 
                     // Anexa como se fosse um arquivo normal
                     formData.append('pdfs', pdfFile);
@@ -456,11 +637,16 @@ async function sendMessage() {
                 }
             }
 
-            if (message) {
+            // Se mensagem e conversacional e PDF ainda nao extraido, usa comando vazio -> EXTRACTION_PROMPT
+            const _cmdsExtracao = ['extrair','extrai','processar','analisar','analyze','resumo','resumir','checklist','preencher','grafico'];
+            const _isExtCmd = !message || _cmdsExtracao.some(k => message.toLowerCase().includes(k));
+            if (message && !_isExtCmd) {
+                _pendingQuery = message; // Guarda pergunta para responder apos extracao
+                // Sem comando -> EXTRACTION_PROMPT -> grandezas geradas corretamente
+            } else if (message) {
                 formData.append('comando', message);
-            } else {
-                formData.append('comando', 'resumo e analise geral');
             }
+            // else: sem mensagem -> sem comando -> EXTRACTION_PROMPT
 
             // Envia para endpoint async
             const response = await fetch('/upload-async', {
@@ -472,37 +658,50 @@ async function sendMessage() {
 
             if (data.success) {
                 // Inicia Polling
-                pollProgress(data.task_id, message);
+                pollProgress(data.task_id);
             } else {
                 removeLastMessage();
                 addBotMessage('❌ Erro no envio: ' + data.message);
             }
+
         } else {
             // MODO CHAT (Apenas Texto)
-
-            // Proativamente tenta pegar localizacao se parecer busca de lab
-            let geo = _userGeoCache;
-            if (!geo && _isLabSearch(message)) {
-                geo = await _getUserGeo();
+            const _chatPayload = {
+                message: message,
+                user_id: currentUserId || '',
+                funcionario_id: window.currentFuncionarioId || ''
+            };
+            if (extractedData && extractedData.length > 0) {
+                _chatPayload.dados_extraidos = extractedData.map(inst => {
+                    const c = {};
+                    for (const [k, v] of Object.entries(inst)) {
+                        if (!k.startsWith('_')) c[k] = v;
+                    }
+                    return c;
+                });
             }
-
             const response = await fetch('/chat-mensagem', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    message: message,
-                    user_id: currentUserId || '',
-                    funcionario_id: window.currentFuncionarioId || '',
-                    lat: geo ? geo.lat : null,
-                    lon: geo ? geo.lon : null
-                })
+                body: JSON.stringify(_chatPayload)
             });
 
             const data = await response.json();
             removeLastMessage();
 
+            if (isSessionClearedResponse(data)) {
+                extractedData = null;
+                hasPdfSessionContext = false;
+            }
+
+            if (shouldRetryWithPersistentPdf(data) && (cachedPdfFile || contextPdfUrl)) {
+                const retried = await retryWithPersistentPdf(message);
+                if (retried) return;
+            }
+
             // Se tem gráfico, não exibe a mensagem de texto (evita repetir a tabela)
             if (data.grafico) {
+                hasPdfSessionContext = true;
                 renderGraficoCalib(data.grafico);
             } else {
                 addBotMessage(data.message);
@@ -525,17 +724,6 @@ async function sendMessage() {
             // Listagem/Filtro de Instrumentos
             if (data.listar_instrumentos) {
                 await buscarEExibirInstrumentos(data.listar_instrumentos);
-            }
-
-            // Busca de Laboratórios via IA
-            if (data.buscar_laboratorios) {
-                const tipoLab = data.buscar_laboratorios.tipo || 'livre';
-                // Para busca por instrumento/livre, exibe cards visuais adicionais
-                // Para rbc/nome_lab a mensagem já contém tudo, não precisa dos cards
-                if (tipoLab === 'instrumento' || tipoLab === 'livre') {
-                    await _buscarEExibirLaboratorios(message, data.buscar_laboratorios.termo);
-                }
-                // Para rbc e nome_lab, a mensagem do backend já mostra os detalhes completos
             }
         }
 
@@ -590,6 +778,7 @@ function pollProgress(taskId, originalMessage) {
 
                 if (statusData.results && statusData.results.length > 0) {
                     extractedData = statusData.results;
+                    hasPdfSessionContext = true;
 
                     // VERIFICA SE É RESPOSTA TEXTUAL (CHATGPT-STYLE)
                     const actionBar = document.getElementById('actionBar');
@@ -649,12 +838,23 @@ function pollProgress(taskId, originalMessage) {
                         const cardsHTML = renderEditableJSON(extractedData);
                         addBotMessage(cardsHTML);
 
-                        // 3. Se o comando era sobre tabelas/grandezas, renderiza direto do extractedData
-                        const tabelaKws = ['tabela', 'tabelas', 'grandeza', 'grandezas', 'resultado', 'resultados'];
-                        const queriaTabela = originalMessage && tabelaKws.some(k => originalMessage.toLowerCase().includes(k));
-                        if (queriaTabela) {
-                            const tabelaHtml = _renderTabelasDeExtracao(extractedData);
-                            if (tabelaHtml) addBotMessage(tabelaHtml);
+                        // 3. Responde pergunta pendente usando dados recem extraidos
+                        const _queryToAnswer = _pendingQuery || originalMessage;
+                        _pendingQuery = null;
+                        if (_queryToAnswer) {
+                            const _tabelaKws = ['tabela','tabelas','grandeza','grandezas','resultado','resultados'];
+                            const _graficoKws = ['grafico','grafico','chart','erro de indicacao','indicacao'];
+                            const _queriaTabela = _tabelaKws.some(k => _queryToAnswer.toLowerCase().includes(k));
+                            const _queriaGrafico = _graficoKws.some(k => _queryToAnswer.toLowerCase().includes(k));
+                            if (_queriaTabela) {
+                                const _tabelaHtml = _renderTabelasDeExtracao(extractedData);
+                                if (_tabelaHtml) addBotMessage(_tabelaHtml);
+                            } else if (_queriaGrafico) {
+                                const _cleanData = extractedData.map(inst => { const ci = {}; for (const [k,v] of Object.entries(inst)) { if (!k.startsWith('_')) ci[k]=v; } return ci; });
+                                fetch('/chat-mensagem',{method:'POST',headers:{'Content-Type':'application/json'},
+                                    body:JSON.stringify({message:_queryToAnswer,user_id:currentUserId||'',dados_extraidos:_cleanData})
+                                }).then(r=>r.json()).then(grd=>{if(grd.grafico)renderGraficoCalib(grd.grafico);else if(grd.message)addBotMessage(grd.message);});
+                            }
                         }
                     }
 
@@ -678,51 +878,6 @@ function pollProgress(taskId, originalMessage) {
             clearInterval(interval);
         }
     }, 1000); // Checa a cada 1 segundo
-}
-
-
-// Renderiza tabelas de grandezas/resultados diretamente dos dados extraídos
-function _renderTabelasDeExtracao(dados) {
-    if (!dados || dados.length === 0) return '';
-    let html = '';
-    dados.forEach((inst, i) => {
-        const nome = inst.nome || inst.instrumento || `Instrumento ${i + 1}`;
-        const tag = inst.identificacao || 'S/N';
-        html += `<strong>${i + 1}. ${nome} — ${tag}</strong><br>`;
-
-        // Tenta grandezas (formato padrão)
-        const grandezas = inst.grandezas || [];
-        if (grandezas.length > 0) {
-            html += '<div class="table-container"><table><thead><tr>';
-            html += '<th>Faixa</th><th>Unidade</th><th>Resolução</th><th>Tolerância</th><th>Critério</th>';
-            html += '</tr></thead><tbody>';
-            grandezas.forEach(g => {
-                html += `<tr><td>${g.faixa_nominal || '—'}</td><td>${g.unidade || '—'}</td><td>${g.resolucao || '—'}</td><td>${g.tolerancia_processo || '—'}</td><td>${g.criterio_aceitacao || '—'}</td></tr>`;
-            });
-            html += '</tbody></table></div>';
-            return;
-        }
-
-        // Fallback: procura qualquer campo array-de-objetos no resultado
-        let encontrouTabela = false;
-        for (const [key, val] of Object.entries(inst)) {
-            if (key.startsWith('_') || !Array.isArray(val) || val.length === 0 || typeof val[0] !== 'object') continue;
-            const cols = Object.keys(val[0]);
-            if (cols.length < 2) continue;
-            encontrouTabela = true;
-            html += `<br><strong>${key}</strong><div class="table-container"><table><thead><tr>`;
-            cols.forEach(c => { html += `<th>${c}</th>`; });
-            html += '</tr></thead><tbody>';
-            val.forEach(row => {
-                html += '<tr>';
-                cols.forEach(c => { html += `<td>${row[c] !== undefined ? row[c] : '—'}</td>`; });
-                html += '</tr>';
-            });
-            html += '</tbody></table></div>';
-        }
-        if (!encontrouTabela) html += '<em>Sem tabelas encontradas neste instrumento.</em><br>';
-    });
-    return html || '';
 }
 
 
@@ -886,6 +1041,40 @@ function gerarVisualizacao(instrumentos, comando) {
     return html;
 }
 
+// Renderiza tabelas de grandezas/resultados extraídos do PDF como HTML de leitura
+function _renderTabelasDeExtracao(data) {
+    if (!data || data.length === 0) return null;
+    let html = '';
+    data.forEach((inst, idx) => {
+        const ident = inst.identificacao || inst.numero_certificado || `Instrumento ${idx + 1}`;
+        const nome = inst.nome || '';
+        if (inst.grandezas && Array.isArray(inst.grandezas) && inst.grandezas.length > 0) {
+            html += `<div style="margin-bottom:14px;">`;
+            html += `<div style="font-weight:600; font-size:13px; margin-bottom:6px;">📏 ${ident}${nome ? ' — ' + nome : ''}</div>`;
+            html += `<table style="width:100%; border-collapse:collapse; font-size:12px;">`;
+            html += `<tr style="background:var(--bg-tertiary); text-align:left;">
+                        <th style="padding:5px 8px;">Grandeza</th>
+                        <th style="padding:5px 8px;">Faixa</th>
+                        <th style="padding:5px 8px;">Unidade</th>
+                        <th style="padding:5px 8px;">Resolução</th>
+                        <th style="padding:5px 8px;">Tolerância</th>
+                     </tr>`;
+            inst.grandezas.forEach((g, i) => {
+                const bg = i % 2 === 0 ? 'background:var(--bg-secondary)' : '';
+                html += `<tr style="${bg}">
+                            <td style="padding:5px 8px;">${g.grandeza || '—'}</td>
+                            <td style="padding:5px 8px;">${g.faixa_nominal || '—'}</td>
+                            <td style="padding:5px 8px;">${g.unidade || '—'}</td>
+                            <td style="padding:5px 8px;">${g.resolucao || '—'}</td>
+                            <td style="padding:5px 8px;">${g.tolerancia_processo || '—'}</td>
+                         </tr>`;
+            });
+            html += `</table></div>`;
+        }
+    });
+    return html || null;
+}
+
 function addUserMessage(text) {
     const div = document.createElement('div');
     div.className = 'message user';
@@ -897,11 +1086,14 @@ function addUserMessage(text) {
     scrollToBottom();
 }
 
+// AREA PROTEGIDA (ordem do usuario):
+// Nao alterar sem autorizacao explicita do usuario e revisao tecnica previa.
+// Funcao critica para renderizacao de tabelas e quebra de linha no chat.
 function markdownToHtml(text) {
     if (!text) return '';
 
-    // Se for HTML rico (construído internamente), retorna como está
-    if (/<(table|div|button|a |span|form|input|ul|li|ol)/i.test(text)) return text;
+    // Se for HTML complexo (tabelas de preview já prontas), retorna como está
+    if (text.includes('<table') || text.includes('<div style')) return text;
 
     // 0. Normaliza tags enviadas pela IA para evitar escape duplo
     let normalized = text
@@ -998,6 +1190,38 @@ function removeLastMessage() {
 
 function scrollToBottom() {
     chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// ============================================================
+// GEOLOCALIZACAO (para busca de laboratorios por distancia)
+// ============================================================
+let _userGeoCache = null;
+
+function _getUserGeo() {
+    return new Promise((resolve) => {
+        if (_userGeoCache) return resolve(_userGeoCache);
+        if (!navigator.geolocation) return resolve(null);
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                _userGeoCache = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+                resolve(_userGeoCache);
+            },
+            () => resolve(null),
+            { timeout: 4000 }
+        );
+    });
+}
+
+const _labKeywords = [
+    'laboratorio', 'laboratório', 'lab ', 'labs ', 'acreditado', 'rbc',
+    'calibra ', 'calibrar ', 'onde calibro', 'quem calibra', 'perto',
+    'mais perto', 'fornecedor', 'parceiro', 'acreditacao', 'acreditação',
+    'responsavel pelo lab', 'gerente tecnico'
+];
+
+function _isLabSearch(message) {
+    const lower = message.toLowerCase();
+    return _labKeywords.some(kw => lower.includes(kw));
 }
 
 // Valida se uma string e uma data valida no formato YYYY-MM-DD
@@ -1134,29 +1358,19 @@ async function insertarNoBanco() {
         return;
     }
 
-    // Valida campos obrigatorios usando o módulo de validação
-    const validar = window.validarCamposGocal || validarCamposGocal;
-    const pendencias = validar ? validar(extractedData) : [];
+    // Valida campos obrigatorios do Gocal antes de inserir
+    const pendencias = validarCamposGocal(extractedData);
 
     if (pendencias.length > 0) {
-        // Conta somente erros críticos
-        const totalCriticos = pendencias.reduce((n, p) => n + p.erros.length, 0);
-
-        if (totalCriticos > 0 && window.ValidationModal) {
-            // Abre modal rico para o usuário corrigir e confirmar
-            window.ValidationModal.open(extractedData, pendencias, (_updates) => {
-                executarInsercao();
-            });
-            return;
-        }
-        // Se só tem avisos (não críticos), permite inserir com toast
-        if (totalCriticos === 0) {
-            const avisos = pendencias.reduce((n, p) => n + p.avisos.length, 0);
-            addBotMessage(`⚠️ ${avisos} campo(s) recomendado(s) não preenchido(s), mas continuando com a inserção.`);
-        }
+        // Mostra formulario e espera o usuario preencher
+        mostrarFormularioCalibracao(pendencias, () => {
+            // Callback: usuario preencheu, agora insere de verdade
+            executarInsercao();
+        });
+        return;
     }
 
-    // Tudo ok, insere direto
+    // Tudo valido, insere direto
     executarInsercao();
 }
 
@@ -1672,6 +1886,9 @@ document.head.appendChild(styleJSON);
 // BUSCAR E EXIBIR INSTRUMENTOS (Chat Filtro)
 // ==========================================
 
+// AREA PROTEGIDA (ordem do usuario):
+// Nao alterar sem autorizacao explicita do usuario e revisao tecnica previa.
+// Funcao critica para renderizacao de tabela HTML de instrumentos no chat.
 async function buscarEExibirInstrumentos(filtros) {
     const userId = window.gocalUserId || '';
     const params = new URLSearchParams({ user_id: userId });
@@ -1679,6 +1896,10 @@ async function buscarEExibirInstrumentos(filtros) {
     if (filtros.status) params.append('status', filtros.status);
     if (filtros.filtro_vencidos) params.append('filtro_vencidos', '1');
     if (filtros.filtro_a_vencer) params.append('filtro_a_vencer', '1');
+    if (filtros.identificacao) params.append('identificacao', filtros.identificacao);
+    if (filtros.instrumento) params.append('instrumento', filtros.instrumento);
+    if (filtros.data_inicio) params.append('data_inicio', filtros.data_inicio);
+    if (filtros.data_fim) params.append('data_fim', filtros.data_fim);
 
     let html = '';
     try {
@@ -1712,7 +1933,11 @@ async function buscarEExibirInstrumentos(filtros) {
                     termo: filtros.termo || '',
                     status: filtros.status || '',
                     filtro_vencidos: filtros.filtro_vencidos ? '1' : '0',
-                    filtro_a_vencer: filtros.filtro_a_vencer ? '1' : '0'
+                    filtro_a_vencer: filtros.filtro_a_vencer ? '1' : '0',
+                    identificacao: filtros.identificacao || '',
+                    instrumento: filtros.instrumento || '',
+                    data_inicio: filtros.data_inicio || '',
+                    data_fim: filtros.data_fim || ''
                 }
             }, '*');
         }
@@ -1725,109 +1950,52 @@ async function buscarEExibirInstrumentos(filtros) {
 }
 
 // ==========================================
-// BUSCA DE LABORATÓRIOS
+// CARDS DE LABORATORIOS
 // ==========================================
-const _labKeywords = [
-    'qual laboratório calibra', 'qual laboratorio calibra',
-    'qual lab calibra', 'laboratório que calibra', 'laboratorio que calibra',
-    'onde posso calibrar', 'onde calibrar', 'onde vou calibrar',
-    'laboratório para calibrar', 'laboratorio para calibrar',
-    'quero calibrar', 'preciso calibrar',
-    'tem laboratório para', 'tem laboratorio para',
-    'qual laboratório faz', 'qual lab faz',
-    'buscar laboratório', 'buscar laboratorio',
-    'encontrar laboratório', 'encontrar laboratorio',
-    'laboratório calibra', 'laboratorio calibra',
-];
+function _renderLaboratoriosCards(labs, termo, porDistancia) {
+    if (!labs || labs.length === 0) return;
 
-function _isLabSearch(message) {
-    const lower = message.toLowerCase();
-    return _labKeywords.some(kw => lower.includes(kw));
-}
+    let html = `<div style="font-size:13px;">`;
+    html += `<div style="font-weight:600; margin-bottom:10px; color:var(--text-primary);">`;
+    html += `🔬 ${labs.length} laboratório(s) encontrado(s) para <em>${termo}</em>`;
+    if (porDistancia) html += ` <span style="font-size:11px; color:var(--text-secondary);">(ordenados por distância)</span>`;
+    html += `</div>`;
 
-// Geolocalização cacheada
-let _userGeoCache = null;
-function _getUserGeo() {
-    return new Promise((resolve) => {
-        if (_userGeoCache) return resolve(_userGeoCache);
-        if (!navigator.geolocation) return resolve(null);
-        navigator.geolocation.getCurrentPosition(
-            pos => {
-                _userGeoCache = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-                resolve(_userGeoCache);
-            },
-            () => resolve(null),
-            { timeout: 4000 }
-        );
+    labs.forEach((lab) => {
+        const acred = lab.acreditacao_num
+            ? `<span style="font-size:10px; background:#e8f5e9; color:#2e7d32; padding:2px 6px; border-radius:10px; font-weight:600;">RBC ${lab.acreditacao_num}</span>`
+            : '';
+        const distancia = lab.distancia_km != null
+            ? `<span style="font-size:11px; color:#667eea; font-weight:600;">📍 ${lab.distancia_km} km</span>`
+            : '';
+        const cmc = lab.cmc ? `<span style="font-size:11px; color:var(--text-secondary);">CMC: ${lab.cmc}</span>` : '';
+        const tel = lab.telefone ? `<div style="font-size:11px; color:var(--text-secondary);">📞 ${lab.telefone}</div>` : '';
+        const email = lab.email ? `<div style="font-size:11px; color:var(--text-secondary);">✉️ ${lab.email}</div>` : '';
+
+        html += `
+        <div style="background:var(--bg-secondary,#f8f9fa); border:1px solid var(--border-color,#e0e0e0);
+                    border-radius:10px; padding:10px 12px; margin-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
+                <div style="font-weight:600; font-size:13px; color:var(--text-primary);">${lab.nome_laboratorio}</div>
+                <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">${acred} ${distancia}</div>
+            </div>
+            <div style="font-size:12px; color:var(--text-secondary); margin-top:3px;">
+                📌 ${lab.cidade} — ${lab.uf} &nbsp;|&nbsp; ${lab.grupo || lab.descricao_servico || ''} &nbsp;|&nbsp; ${cmc}
+            </div>
+            ${tel}${email}
+        </div>`;
     });
+
+    html += `</div>`;
+    addBotMessage(html, true);
 }
-
-async function _buscarEExibirLaboratorios(message, termoIA = null) {
-    removeLastMessage();
-    addLoadingMessage();
-
-    const geo = await _getUserGeo();
-    // Se a IA já extraiu o termo, usamos ele diretamente. Caso contrário, deixa o backend extrair.
-    const body = { message };
-    if (termoIA) body.termo_ia = termoIA;
-    if (geo) { body.lat = geo.lat; body.lon = geo.lon; }
-
-    try {
-        const res = await fetch('/buscar-laboratorios', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        const data = await res.json();
-        removeLastMessage();
-
-        if (!data.success || !data.laboratorios || data.laboratorios.length === 0) {
-            addBotMessage(data.message || 'Nenhum laboratório encontrado.');
-            return;
-        }
-
-        const labs = data.laboratorios;
-        const porDistancia = data.por_distancia;
-        const termo = data.termo || '';
-        let html = `<div style="font-size:13px;">`;
-        html += `<div style="font-weight:600; margin-bottom:10px; color:var(--text-primary);">`;
-        html += `🔬 ${labs.length} laboratório(s) encontrado(s) para <em>${termo}</em>`;
-        if (porDistancia) html += ` <span style="font-size:11px; color:var(--text-secondary);">(ordenados por distância)</span>`;
-        html += `</div>`;
-
-        labs.forEach((lab) => {
-            const acred = lab.acreditacao_num ? `<span style="font-size:10px; background:#e8f5e9; color:#2e7d32; padding:2px 6px; border-radius:10px; font-weight:600;">RBC ${lab.acreditacao_num}</span>` : '';
-            const distancia = lab.distancia_km != null ? `<span style="font-size:11px; color:#667eea; font-weight:600;">📍 ${lab.distancia_km} km</span>` : '';
-            const cmc = lab.cmc ? `<span style="font-size:11px; color:var(--text-secondary);">CMC: ${lab.cmc}</span>` : '';
-            const tel = lab.telefone ? `<div style="font-size:11px; color:var(--text-secondary);">📞 ${lab.telefone}</div>` : '';
-            const email = lab.email ? `<div style="font-size:11px; color:var(--text-secondary);">✉️ ${lab.email}</div>` : '';
-
-            html += `
-            <div style="background:var(--bg-secondary,#f8f9fa); border:1px solid var(--border-color,#e0e0e0);
-                        border-radius:10px; padding:10px 12px; margin-bottom:8px;">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
-                    <div style="font-weight:600; font-size:13px; color:var(--text-primary);">${lab.nome_laboratorio}</div>
-                    <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">${acred} ${distancia}</div>
-                </div>
-                <div style="font-size:12px; color:var(--text-secondary); margin-top:3px;">
-                    📌 ${lab.cidade} — ${lab.uf} &nbsp;|&nbsp; ${lab.grupo || lab.descricao_servico || ''} &nbsp;|&nbsp; ${cmc}
-                </div>
-                ${tel}${email}
-            </div>`;
-        });
-
-        html += `</div>`;
-        addBotMessage(html, true);
-    } catch (e) {
-        removeLastMessage();
-        addBotMessage('Erro ao buscar laboratórios: ' + e.message);
-    }
-}
-
 
 // ==========================================
 // GRÁFICO DE CALIBRAÇÃO (Chart.js)
 // ==========================================
+// AREA PROTEGIDA (ordem do usuario):
+// Nao alterar sem autorizacao explicita do usuario e revisao tecnica previa.
+// Funcao critica para renderizacao de grafico de calibracao (Chart.js).
 function renderGraficoCalib(grafico) {
     const { titulo, x_label, y_label, pontos } = grafico;
     if (!pontos || pontos.length === 0) return;
@@ -1913,3 +2081,5 @@ function renderGraficoCalib(grafico) {
         }
     });
 }
+
+// Listeners registrados em linha 368 (sendMessageV2). Nao duplicar aqui.

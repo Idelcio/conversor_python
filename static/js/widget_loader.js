@@ -5,7 +5,7 @@
     const CHAT_URL = _scriptSrc ? (new URL(_scriptSrc)).origin : "http://localhost:5001";
 
     // Pega user_id da página pai se existir (ex: input hidden ou variavel global)
-    // Adapte isso conforme seu sistema Labster expõe o ID do usuário
+    // Adapte isso conforme seu sistema Gocal expõe o ID do usuário
     // Pega user_id e funcionario_id da página pai
     let userId = "";
     let funcionarioId = "";

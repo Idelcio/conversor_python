@@ -55,7 +55,9 @@ DB_CONFIG = {
     'port': int(os.getenv('DB_PORT', 3306)),
     'database': os.getenv('DB_DATABASE', 'laboratorios'),
     'user': os.getenv('DB_USERNAME', 'root'),
-    'password': os.getenv('DB_PASSWORD', '')
+    'password': os.getenv('DB_PASSWORD', ''),
+    'charset': 'utf8mb4',
+    'use_unicode': True
 }
 
 # ============================================================
@@ -63,7 +65,7 @@ DB_CONFIG = {
 # ============================================================
 try:
     if os.getenv('GOOGLE_API_KEY') and GeminiAdapter:
-        print("[INIT] 🚀 Iniciando com MODO GEMINI (Google)...")
+        print("[INIT] Ã°Å¸Å¡â‚¬ Iniciando com MODO GEMINI (Google)...")
         extractor = GeminiAdapter()
     else:
         print("[INIT] Iniciando com OpenAI...")
@@ -78,21 +80,21 @@ processing_tasks = {} # Cache de tarefas assincronas {task_id: status}
 
 # Mapa de correcao de status (sem acento -> com acento)
 STATUS_MAP = {
-    'sem calibracao': 'Sem Calibração',
-    'sem calibração': 'Sem Calibração',
-    'pendente aprovacao': 'Pendente Aprovação',
-    'pendente aprovação': 'Pendente Aprovação',
-    'em calibracao': 'Em Calibração',
-    'em calibração': 'Em Calibração',
-    'em manutencao': 'Em Manutenção',
-    'em manutenção': 'Em Manutenção',
+    'sem calibracao': 'Sem CalibraÃƒÂ§ÃƒÂ£o',
+    'sem calibraÃƒÂ§ÃƒÂ£o': 'Sem CalibraÃƒÂ§ÃƒÂ£o',
+    'pendente aprovacao': 'Pendente AprovaÃƒÂ§ÃƒÂ£o',
+    'pendente aprovaÃƒÂ§ÃƒÂ£o': 'Pendente AprovaÃƒÂ§ÃƒÂ£o',
+    'em calibracao': 'Em CalibraÃƒÂ§ÃƒÂ£o',
+    'em calibraÃƒÂ§ÃƒÂ£o': 'Em CalibraÃƒÂ§ÃƒÂ£o',
+    'em manutencao': 'Em ManutenÃƒÂ§ÃƒÂ£o',
+    'em manutenÃƒÂ§ÃƒÂ£o': 'Em ManutenÃƒÂ§ÃƒÂ£o',
     'inativo': 'Inativo',
 }
 
 def normalizar_status(status_raw):
     """Normaliza o status para o formato correto com acentos"""
     if not status_raw:
-        return 'Sem Calibração'
+        return 'Sem CalibraÃƒÂ§ÃƒÂ£o'
     chave = status_raw.strip().lower()
     return STATUS_MAP.get(chave, status_raw)
 
@@ -100,6 +102,229 @@ def normalizar_status(status_raw):
 # ============================================================
 # ROTAS - PAGINAS
 # ============================================================
+def _to_float_safe_v2(value):
+    """Converte valores numericos em string (pt-BR/en-US) para float."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip().replace('Ã¢Ë†â€™', '-')
+    if not text:
+        return None
+
+    match = re.search(r'[-+]?\d+(?:[.,]\d+)?', text)
+    if not match:
+        return None
+
+    token = match.group(0)
+    if ',' in token and '.' in token:
+        if token.rfind(',') > token.rfind('.'):
+            token = token.replace('.', '').replace(',', '.')
+        else:
+            token = token.replace(',', '')
+    elif ',' in token:
+        token = token.replace(',', '.')
+
+    try:
+        return float(token)
+    except Exception:
+        return None
+
+
+def _pick_numeric_by_key_v2(data, key_hints):
+    """Busca o primeiro valor numerico em um dicionario a partir de chaves alvo."""
+    if not isinstance(data, dict):
+        return None
+
+    for raw_key, raw_val in data.items():
+        key = str(raw_key).strip().lower()
+        if any(hint in key for hint in key_hints):
+            val = _to_float_safe_v2(raw_val)
+            if val is not None:
+                return val
+    return None
+
+
+def _extract_chart_points_from_data_v2(data):
+    """Extrai pontos (x, y) de estruturas complexas de tabelas para grafico."""
+    x_hints = [
+        'valor_nominal', 'valor nominal', 'nominal', 'ponto_nominal',
+        'valor aplicado', 'referencia', 'x'
+    ]
+    y_hints = [
+        'erro_de_indicacao', 'erro de indicacao', 'erro indicacao',
+        'erro', 'desvio', 'y'
+    ]
+    ie_hints = [
+        'ie', 'tolerancia', 'tolerÃƒÂ¢ncia', 'erro_maximo_permitido',
+        'erro maximo permitido', 'limite'
+    ]
+    unit_hints = ['unidade', 'unit']
+
+    points = []
+    ie_values = []
+    units = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            x_val = _pick_numeric_by_key_v2(node, x_hints)
+            y_val = _pick_numeric_by_key_v2(node, y_hints)
+            if x_val is not None and y_val is not None:
+                points.append((x_val, y_val))
+
+            for raw_key, raw_val in node.items():
+                key = str(raw_key).strip().lower()
+                if any(h in key for h in ie_hints):
+                    ie_val = _to_float_safe_v2(raw_val)
+                    if ie_val is not None:
+                        ie_values.append(abs(ie_val))
+                if any(h in key for h in unit_hints) and isinstance(raw_val, str) and raw_val.strip():
+                    units.append(raw_val.strip())
+
+                if isinstance(raw_val, (dict, list, tuple)):
+                    walk(raw_val)
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                walk(item)
+
+    walk(data)
+
+    if not points:
+        return None
+
+    unique_points = sorted({(float(x), float(y)) for x, y in points}, key=lambda p: p[0])
+    ie_value = max(ie_values) if ie_values else 0.0
+    unit = units[0] if units else 'mm'
+
+    return {
+        'titulo': 'Erro de Indicacao',
+        'x_label': f'Valor Nominal ({unit})',
+        'y_label': f'Erro ({unit})',
+        'pontos': [{'x': x, 'y': y, 'ie': ie_value} for x, y in unique_points]
+    }
+
+
+def _build_document_context_v2(dados, max_chars):
+    """Monta contexto de documento com truncamento controlado."""
+    if not dados:
+        return "", False, 0
+
+    json_str = json.dumps(dados, ensure_ascii=False, indent=2)
+    original_len = len(json_str)
+    truncated = False
+    if original_len > max_chars:
+        json_str = json_str[:max_chars] + "... (troncado)"
+        truncated = True
+
+    return f"\n\nDADOS DO DOCUMENTO (PDF atual em sessÃƒÂ£o):\n{json_str}", truncated, original_len
+
+def _is_truthy_filter_v2(value):
+    """Normaliza flags de filtro vindas do frontend/IA."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in ('1', 'true', 'sim', 'yes', 'on')
+    return False
+
+
+def _normalize_filter_date_v2(value):
+    """Aceita apenas YYYY-MM-DD para filtros de data."""
+    if not value:
+        return ''
+    text = str(value).strip()
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', text):
+        return text
+    return ''
+
+
+def _aplicar_filtros_instrumentos_sql_v2(sql, params, filtros):
+    """Aplica filtros de monitoramento ao SQL sem remover os existentes."""
+    termo = (filtros.get('termo') or '').strip()
+    status = (filtros.get('status') or '').strip()
+    identificacao = (filtros.get('identificacao') or '').strip()
+    instrumento = (filtros.get('instrumento') or '').strip()
+    responsavel = (filtros.get('responsavel') or '').strip()
+    departamento = (filtros.get('departamento') or '').strip()
+    data_inicio = _normalize_filter_date_v2(filtros.get('data_inicio'))
+    data_fim = _normalize_filter_date_v2(filtros.get('data_fim'))
+    filtro_vencidos = _is_truthy_filter_v2(filtros.get('filtro_vencidos'))
+    filtro_a_vencer = _is_truthy_filter_v2(filtros.get('filtro_a_vencer'))
+
+    if termo:
+        sql += " AND (i.identificacao COLLATE utf8mb4_general_ci LIKE %s OR i.nome COLLATE utf8mb4_general_ci LIKE %s OR i.descricao COLLATE utf8mb4_general_ci LIKE %s OR i.responsavel COLLATE utf8mb4_general_ci LIKE %s OR i.departamento COLLATE utf8mb4_general_ci LIKE %s)"
+        params += [f'%{termo}%', f'%{termo}%', f'%{termo}%', f'%{termo}%', f'%{termo}%']
+
+    if identificacao:
+        sql += " AND i.identificacao COLLATE utf8mb4_general_ci LIKE %s"
+        params.append(f'%{identificacao}%')
+
+    if instrumento:
+        sql += " AND i.descricao COLLATE utf8mb4_general_ci LIKE %s"
+        params.append(f'%{instrumento}%')
+
+    if responsavel:
+        sql += " AND i.responsavel COLLATE utf8mb4_general_ci LIKE %s"
+        params.append(f'%{responsavel}%')
+
+    if departamento:
+        sql += " AND i.departamento COLLATE utf8mb4_general_ci LIKE %s"
+        params.append(f'%{departamento}%')
+
+    if status:
+        sql += " AND i.status = %s"
+        params.append(status)
+
+    if data_inicio:
+        sql += """
+            AND EXISTS (
+                SELECT 1
+                FROM calibracoes cdt_ini
+                WHERE cdt_ini.instrumento_id = i.id
+                  AND DATE(cdt_ini.data_proxima_calibracao) >= %s
+            )
+        """
+        params.append(data_inicio)
+
+    if data_fim:
+        sql += """
+            AND EXISTS (
+                SELECT 1
+                FROM calibracoes cdt_fim
+                WHERE cdt_fim.instrumento_id = i.id
+                  AND DATE(cdt_fim.data_proxima_calibracao) <= %s
+            )
+        """
+        params.append(data_fim)
+
+    if filtro_vencidos:
+        sql += """
+            AND (
+                (c.data_proxima_calibracao IS NOT NULL AND DATE(c.data_proxima_calibracao) <= CURDATE())
+                OR
+                (c.id IS NULL AND i.periodicidade IS NOT NULL
+                    AND DATE_ADD(DATE(i.created_at), INTERVAL i.periodicidade MONTH) <= CURDATE())
+            )
+        """
+
+    if filtro_a_vencer:
+        sql += """
+            AND (
+                (c.data_proxima_calibracao IS NOT NULL
+                    AND DATE(c.data_proxima_calibracao) <= DATE_ADD(CURDATE(), INTERVAL 30 DAY))
+                OR
+                (c.id IS NULL AND i.periodicidade IS NOT NULL
+                    AND DATE_ADD(DATE(i.created_at), INTERVAL i.periodicidade MONTH) <= DATE_ADD(CURDATE(), INTERVAL 30 DAY))
+            )
+        """
+
+    return sql, params
+
+
 @app.route('/')
 def index():
     """Pagina principal do Chat"""
@@ -224,7 +449,7 @@ def chat_extrair():
             extracted_cache[session_id] = instrumentos
             
             # Gera resumo em texto para o chat
-            resumo_msg = f"✅ **{len(instrumentos)} documento(s) analisado(s)!**\n\n"
+            resumo_msg = f"Ã¢Å“â€¦ **{len(instrumentos)} documento(s) analisado(s)!**\n\n"
             for i, inst in enumerate(instrumentos):
                 ident = inst.get('identificacao') or inst.get('numero_certificado') or 'S/N'
                 nome = inst.get('nome') or inst.get('instrumento') or 'Instrumento'
@@ -233,7 +458,7 @@ def chat_extrair():
             # Adiciona aviso de erro se houve falhas
             falhas = len(files) - len(instrumentos)
             if falhas > 0:
-                resumo_msg += f"\n⚠️ {falhas} arquivo(s) não foram processados (erro ou segurança)."
+                resumo_msg += f"\nÃ¢Å¡Â Ã¯Â¸Â {falhas} arquivo(s) nÃƒÂ£o foram processados (erro ou seguranÃƒÂ§a)."
 
             return jsonify({
                 'success': True,
@@ -246,88 +471,56 @@ def chat_extrair():
                 'message': 'Falha ao analisar o PDF. Verifique se e um documento valido.'
             })
 
-    # 2. Se é mensagem de texto, usa chat
+    # 2. Se e mensagem de texto, usa chat OpenAI
     if message:
         print(f"[MSG] {message}")
 
         dados = extracted_cache.get(session_id, [])
-        msg_lower = message.lower()
 
-        # ── Comando: mostrar dados estruturados (cards) ──────────────────
-        if dados and any(k in msg_lower for k in ['extrair tudo', 'mostrar tudo', 'mostrar dados', 'exibir dados']):
-            return jsonify({'success': True, 'message': 'Dados extraidos:', 'instrumentos': dados})
+        # Comando especial para mostrar dados
+        if dados and ('extrair tudo' in message.lower() or 'mostrar tudo' in message.lower()):
+            return jsonify({
+                'success': True,
+                'message': 'Dados extraidos:',
+                'instrumentos': dados
+            })
 
-        # ── Comando: mostrar tabelas de grandezas ─────────────────────────
-        if dados and any(k in msg_lower for k in ['tabela', 'grandeza', 'resultado', 'mostrar tabela', 'ver tabela', 'listar tabela']):
-            linhas = []
-            for i, inst in enumerate(dados):
-                nome = inst.get('nome') or inst.get('instrumento') or f'Instrumento {i+1}'
-                tag  = inst.get('identificacao') or 'S/N'
-                grandezas = inst.get('grandezas') or []
-                linhas.append(f"### {i+1}. {nome} — `{tag}`\n")
-                if grandezas:
-                    linhas.append("| Faixa | Unidade | Resolução | Tolerância | Critério | Incerteza |")
-                    linhas.append("|---|---|---|---|---|---|")
-                    for g in grandezas:
-                        def _v(k): return str(g.get(k) or '—')
-                        linhas.append(f"| {_v('faixa_nominal')} | {_v('unidade')} | {_v('resolucao')} | {_v('tolerancia_processo')} | {_v('criterio_aceitacao')} | {_v('incerteza')} |")
-                else:
-                    linhas.append("_Sem grandezas registradas._")
-                linhas.append("")
-
-            tabela_md = "\n".join(linhas) if linhas else "Nenhum dado extraído ainda."
-            return jsonify({'success': True, 'message': tabela_md})
-
-        # ── Chat livre com OpenAI ─────────────────────────────────────────
+        # Chat livre com OpenAI
         try:
             contexto = ""
             if dados:
-                # Resumo compacto em vez de JSON bruto
-                resumo = []
-                for i, inst in enumerate(dados):
-                    nome = inst.get('nome') or 'Instrumento'
-                    tag  = inst.get('identificacao') or 'S/N'
-                    cert = inst.get('numero_certificado') or '—'
-                    lab  = inst.get('laboratorio_responsavel') or inst.get('laboratorio') or '—'
-                    data = inst.get('data_calibracao') or '—'
-                    n_g  = len(inst.get('grandezas') or [])
-                    resumo.append(f"  {i+1}. {nome} (Tag: {tag}) | Cert: {cert} | Lab: {lab} | Data: {data} | Grandezas: {n_g}")
-                contexto = "\n\nDADOS EXTRAÍDOS DO PDF:\n" + "\n".join(resumo)
+                contexto = f"\n\nDADOS EXTRAIDOS:\n{json.dumps(dados, ensure_ascii=False, indent=2)}"
 
-            prompt = f"""Voce e o Metron, assistente de metrologia da Gocal.
+            prompt = f"""Voce e o Metron, um assistente inteligente.
 
-PERGUNTA DO USUARIO: "{message}"
+PERGUNTA: "{message}"
 {contexto}
 
-REGRAS DE RESPOSTA:
-1. NUNCA mostre JSON bruto ou código.
-2. Se pedir tabela/grandezas, diga ao usuário para usar o comando "mostrar tabelas".
-3. Use Markdown para formatar (negrito, listas, tabelas Markdown quando necessario).
-4. Responda em português, de forma direta e técnica.
-5. Se não souber, diga que não encontrou a informação no documento."""
+Responda de forma direta e util."""
 
+            # LÃƒÂ³gica Hibrida (Gemini ou OpenAI)
             if hasattr(extractor, 'ask'):
                 resposta = extractor.ask(prompt)
             else:
-                from openai import OpenAI as _OAI
-                client = _OAI(api_key=os.getenv('OPENAI_API_KEY'))
+                client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
                 completion = client.chat.completions.create(
                     model="gpt-4o",
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user",   "content": prompt}
+                        {"role": "user", "content": prompt}
                     ]
                 )
-                resposta = completion.choices[0].message.content
 
+                resposta = completion.choices[0].message.content
             return jsonify({'success': True, 'message': resposta})
 
         except Exception as e:
             error_msg = str(e)
             if "429" in error_msg:
-                return jsonify({'success': True, 'message': '⏳ **Sistema sobrecarregado.** Aguarde 15 segundos e tente novamente.'})
+                return jsonify({'success': True, 'message': 'Ã¢ÂÂ³ **Sistema sobrecarregado.** Atingimos o limite de velocidade da IA. Por favor, aguarde 15 segundos e tente novamente.'})
+            
             print(f"[ERRO] Chat: {e}")
-            return jsonify({'success': True, 'message': f'Ocorreu um erro: {error_msg}'})
+            return jsonify({'success': True, 'message': f'Ocorreu um erro ao processar: {error_msg}'})
 
     return jsonify({'success': False, 'message': 'Envie uma mensagem ou um PDF.'})
 
@@ -343,110 +536,30 @@ def chat_mensagem():
     message = data.get('message', '')
     req_user_id = data.get('user_id') or session.get('gocal_user_id') or ''
     req_funcionario_id = data.get('funcionario_id') or session.get('gocal_funcionario_id') or ''
-    lat = data.get('lat')
-    lon = data.get('lon')
 
-    print(f"[CHAT-MSG] Session: {session_id[:8]}... Msg: {message} | user_id={req_user_id} | geo={lat},{lon}")
+    print(f"[CHAT-MSG] Session: {session_id[:8]}... Msg: {message} | user_id={req_user_id}")
+
+    message_lower = message.lower()
+    grafico_keywords_v2 = ['grafico', 'grÃƒÂ¡fico', 'chart', 'plot', 'plotar', 'mostrar grafico', 'gerar grafico']
+    is_grafico_request = any(kw in message_lower for kw in grafico_keywords_v2)
 
     dados = extracted_cache.get(session_id, [])
 
     # Se usuario pedir explicitamente para ver os dados completos
-    if dados and ('mostrar tudo' in message.lower() or 'ver dados' in message.lower()):
+    if dados and ('mostrar tudo' in message_lower or 'ver dados' in message_lower):
         return jsonify({
             'success': True,
-            'message': 'Aqui estão os dados extraídos:',
+            'message': 'Aqui estÃƒÂ£o os dados extraÃƒÂ­dos:',
             'instrumentos': dados
         })
         
     # Comando para limpar sessao
-    if 'limpar' in message.lower() or 'nova sessao' in message.lower() or 'novo arquivo' in message.lower():
+    if 'limpar' in message_lower or 'nova sessao' in message_lower or 'novo arquivo' in message_lower:
         if session_id in extracted_cache:
             del extracted_cache[session_id]
-        return jsonify({'success': True, 'message': 'Sessão limpa! Pode enviar um novo arquivo.'})
+        return jsonify({'success': True, 'message': 'SessÃƒÂ£o limpa! Pode enviar um novo arquivo.'})
 
-    msg_lower = message.lower()
-
-    # ── Tabelas de grandezas direto do cache ─────────────────────────────
-    tabela_kws = ['tabela', 'tabelas', 'grandeza', 'grandezas',
-                  'resultado', 'resultados', 'mostrar tabela', 'ver tabela']
-    if dados and any(k in msg_lower for k in tabela_kws):
-        linhas = []
-        for i, inst in enumerate(dados):
-            nome = inst.get('nome') or inst.get('instrumento') or f'Instrumento {i+1}'
-            tag  = inst.get('identificacao') or 'S/N'
-            grandezas = inst.get('grandezas') or []
-            linhas.append(f"### {i+1}. {nome} — `{tag}`\n")
-            if grandezas:
-                linhas.append("| Faixa | Unidade | Resolução | Tolerância | Critério | Incerteza |")
-                linhas.append("|---|---|---|---|---|---|")
-                for g in grandezas:
-                    def _v(k, _g=g): return str(_g.get(k) or '—')
-                    linhas.append(f"| {_v('faixa_nominal')} | {_v('unidade')} | {_v('resolucao')} | {_v('tolerancia_processo')} | {_v('criterio_aceitacao')} | {_v('incerteza')} |")
-            else:
-                linhas.append("_Sem grandezas registradas._")
-            linhas.append("")
-        return jsonify({
-            'success': True,
-            'message': "\n".join(linhas) or "Nenhum dado extraído ainda.",
-            'token_usage': extractor.token_usage if extractor else {}
-        })
-
-    # ── Gráfico de erros de indicação ────────────────────────────────────
-    grafico_kws = [
-        'grafico', 'gráfico', 'chart', 'plot', 'plotar',
-        'erro de indicacao', 'erro de indicação',
-        'erros de indicacao', 'erros de indicação',
-        'indicacao', 'indicação', 'desvio', 'mostrar erro',
-    ]
-    if any(k in msg_lower for k in grafico_kws):
-        if not dados:
-            return jsonify({'success': True,
-                'message': 'Para gerar o gráfico, carregue o **PDF do certificado** primeiro. 📄'})
-        # Monta contexto compacto com grandezas para o prompt do gráfico
-        ctx_grafico = ""
-        for inst in dados:
-            nome = inst.get('nome', 'Instrumento')
-            ctx_grafico += f"\nInstrumento: {nome}\n"
-            for g in (inst.get('grandezas') or []):
-                ctx_grafico += f"  faixa={g.get('faixa_nominal')} resultado={g.get('resultado')} tolerancia={g.get('tolerancia_processo')} unidade={g.get('unidade')}\n"
-        prompt_g = f"""Voce e o Metron. O usuario quer um GRAFICO dos dados de calibracao.
-
-DADOS DISPONIVEIS:
-{ctx_grafico}
-
-TAREFA: Extraia os pontos de calibracao (valor nominal e erro de indicacao) e retorne SOMENTE este JSON:
-{{"message": "Aqui está o gráfico!", "mostrar_grafico": {{"titulo": "Erro de Indicação", "x_label": "Valor Nominal", "y_label": "Erro", "pontos": [{{"x": 0.0, "y": 0.000, "ie": 0.007}}]}}}}
-
-REGRAS:
-- "pontos": todos os pares da tabela (x=nominal, y=erro_de_indicacao)
-- "ie": tolerância máxima (±IE); use 0 se não encontrar
-- Substitua "Valor Nominal" e "Erro" pelas unidades reais do instrumento
-- Retorne APENAS o JSON. Nenhum texto extra."""
-        try:
-            if hasattr(extractor, 'ask'):
-                resp_g = extractor.ask(prompt_g)
-            else:
-                from openai import OpenAI as _OAI
-                client = _OAI(api_key=os.getenv('OPENAI_API_KEY'))
-                comp = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[{"role": "user", "content": prompt_g}]
-                )
-                resp_g = comp.choices[0].message.content
-            clean = re.sub(r'```json|```', '', resp_g).strip()
-            jm = re.search(r'\{.*\}', clean, re.DOTALL)
-            if jm:
-                gj = json.loads(jm.group(0))
-                if 'mostrar_grafico' in gj:
-                    return jsonify({'success': True,
-                        'message': gj.get('message', 'Gráfico gerado!'),
-                        'grafico': gj['mostrar_grafico'],
-                        'token_usage': extractor.token_usage if extractor else {}})
-        except Exception as eg:
-            print(f"[GRAFICO] Erro: {eg}")
-        return jsonify({'success': True,
-            'message': 'Não consegui gerar o gráfico. Verifique se o certificado tem tabela de resultados.'})
-
+    # Chat normal com GPT-4o
     try:
         contexto = ""
 
@@ -483,11 +596,12 @@ REGRAS:
                 print(f"[CHAT-MSG] Erro ao carregar contexto do banco: {e_ctx}")
 
         if dados:
-            # Limita o contexto para nao estourar tokens se for muito grande
-            json_str = json.dumps(dados, ensure_ascii=False, indent=2)
-            if len(json_str) > 10000:
-                json_str = json_str[:10000] + "... (troncado)"
-            contexto += f"\n\nDADOS DO DOCUMENTO (PDF atual em sessão):\n{json_str}"
+            # Para grafico, permite contexto maior para PDFs com muitas tabelas.
+            max_doc_context = 60000 if is_grafico_request else 10000
+            documento_ctx, was_truncated, original_len = _build_document_context_v2(dados, max_doc_context)
+            contexto += documento_ctx
+            if was_truncated:
+                print(f"[CHAT-MSG] Contexto do documento truncado: {original_len} -> {max_doc_context} chars")
 
         # Rotas mapeadas da aplicacao
         APP_ROUTES = {
@@ -503,52 +617,26 @@ REGRAS:
             "Favoritos": "/favoritos",
         }
 
-        # Detecta se o usuario quer um grafico
-        grafico_keywords = [
-            'grafico', 'gráfico', 'chart', 'plot', 'plotar',
-            'mostrar grafico', 'gerar grafico',
-            'erro de indicacao', 'erro de indicação',
-            'erros de indicacao', 'erros de indicação',
-            'indicacao', 'indicação', 'desvio', 'mostrar erro',
-        ]
-        tabela_keywords = [
-            'tabela', 'tabelas', 'grandeza', 'grandezas',
-            'resultado', 'resultados', 'mostrar tabela',
-            'ver tabela', 'listar tabela', 'dados de calibracao',
-        ]
-        is_grafico_request = any(kw in message.lower() for kw in grafico_keywords)
-        is_tabela_request  = any(kw in message.lower() for kw in tabela_keywords)
+        # is_grafico_request ja foi calculado no inicio da rota.
 
-        # ── Tabelas de grandezas direto do cache ──────────────────────────
-        if is_tabela_request and dados:
-            linhas = []
-            for i, inst in enumerate(dados):
-                nome = inst.get('nome') or inst.get('instrumento') or f'Instrumento {i+1}'
-                tag  = inst.get('identificacao') or 'S/N'
-                grandezas = inst.get('grandezas') or []
-                linhas.append(f"### {i+1}. {nome} — `{tag}`\n")
-                if grandezas:
-                    linhas.append("| Faixa | Unidade | Resolução | Tolerância | Critério | Incerteza |")
-                    linhas.append("|---|---|---|---|---|---|")
-                    for g in grandezas:
-                        def _v(k, _g=g): return str(_g.get(k) or '—')
-                        linhas.append(f"| {_v('faixa_nominal')} | {_v('unidade')} | {_v('resolucao')} | {_v('tolerancia_processo')} | {_v('criterio_aceitacao')} | {_v('incerteza')} |")
-                else:
-                    linhas.append("_Sem grandezas registradas._")
-                linhas.append("")
-            return jsonify({
-                'success': True,
-                'message': "\n".join(linhas) or "Nenhum dado extraído ainda.",
-                'token_usage': extractor.token_usage if extractor else {}
-            })
-
-        # Se quer gráfico mas não tem dados do PDF na sessão, responde sem chamar a IA
+        # Se quer grÃƒÂ¡fico mas nÃƒÂ£o tem dados do PDF na sessÃƒÂ£o, responde sem chamar a IA
         if is_grafico_request and not dados:
             return jsonify({
                 'success': True,
-                'message': 'Para gerar o gráfico, carregue o **PDF do certificado de calibração** primeiro. Os dados de medição precisam estar disponíveis na sessão. 📄',
+                'message': 'Para gerar o grÃƒÂ¡fico, carregue o **PDF do certificado de calibraÃƒÂ§ÃƒÂ£o** primeiro. Os dados de mediÃƒÂ§ÃƒÂ£o precisam estar disponÃƒÂ­veis na sessÃƒÂ£o. Ã°Å¸â€œâ€ž',
                 'token_usage': extractor.token_usage if extractor else {}
             })
+
+        if is_grafico_request and dados:
+            grafico_local = _extract_chart_points_from_data_v2(dados)
+            if grafico_local and grafico_local.get('pontos'):
+                print(f"[CHAT-MSG] Grafico local v2: {len(grafico_local.get('pontos', []))} ponto(s) extraido(s).")
+                return jsonify({
+                    'success': True,
+                    'message': 'Aqui esta o grafico!',
+                    'grafico': grafico_local,
+                    'token_usage': extractor.token_usage if extractor else {}
+                })
 
         if is_grafico_request:
             prompt = f"""Voce e o Metron. O usuario quer um GRAFICO dos dados de calibracao.
@@ -556,16 +644,16 @@ REGRAS:
 
 TAREFA UNICA: Extraia os pontos de calibracao (valor nominal e erro de indicacao) do contexto acima e retorne SOMENTE este JSON, sem nenhum texto antes ou depois:
 
-{{"message": "Aqui está o gráfico!", "mostrar_grafico": {{"titulo": "Erro de Indicação", "x_label": "Valor Nominal (mm)", "y_label": "Erro (mm)", "pontos": [{{"x": 0.0, "y": 0.000, "ie": 0.007}}, {{"x": 75.31, "y": 0.005, "ie": 0.007}}]}}}}
+{{"message": "Aqui estÃƒÂ¡ o grÃƒÂ¡fico!", "mostrar_grafico": {{"titulo": "Erro de IndicaÃƒÂ§ÃƒÂ£o", "x_label": "Valor Nominal (mm)", "y_label": "Erro (mm)", "pontos": [{{"x": 0.0, "y": 0.000, "ie": 0.007}}, {{"x": 75.31, "y": 0.005, "ie": 0.007}}]}}}}
 
 REGRAS:
 - "pontos": lista com todos os pares (x=nominal, y=erro_de_indicacao) da tabela de resultados
-- "ie": valor do ±IE ou tolerância máxima (use 0 se nao encontrar)
+- "ie": valor do Ã‚Â±IE ou tolerÃƒÂ¢ncia mÃƒÂ¡xima (use 0 se nao encontrar)
 - "x_label" e "y_label": use a unidade correta do instrumento
 - Retorne SOMENTE o JSON. Zero texto adicional.
 """
         else:
-            prompt = f"""Voce e o Metron, assistente do sistema Gocal/Labster de gestao de instrumentos de medicao.
+            prompt = f"""Voce e o Metron, assistente do sistema Gocal de gestao de instrumentos de medicao.
 
 IMPORTANTE: Voce SOMENTE pode falar sobre dados do usuario autenticado (user_id={req_user_id or 'NAO IDENTIFICADO'}).
 Nunca revele nem use dados de outros usuarios. Se nao houver user_id, recuse consultas ao banco.
@@ -577,40 +665,22 @@ ROTAS DA APLICACAO (Use se o usuario pedir para ir):
 USUARIO: "{message}"
 
 INSTRUCOES:
-0. BLOQUEIO DE NAVEGACAO: Se o usuario pedir para ir, abrir, acessar ou navegar para a pagina de calibracoes OU movimentos, NAO execute a navegacao. Responda APENAS em texto, de forma sutil e amigavel, algo como: "Essa navegação ainda não está disponível pelo chat, mas você pode acessar pelo menu do sistema normalmente. 😊" — sem JSON, sem navigate_to.
+0. BLOQUEIO DE NAVEGACAO: Se o usuario pedir para ir, abrir, acessar ou navegar para a pagina de calibracoes OU movimentos, NAO execute a navegacao. Responda APENAS em texto, de forma sutil e amigavel, algo como: "Essa navegaÃƒÂ§ÃƒÂ£o ainda nÃƒÂ£o estÃƒÂ¡ disponÃƒÂ­vel pelo chat, mas vocÃƒÂª pode acessar pelo menu do sistema normalmente. Ã°Å¸ËœÅ " Ã¢â‚¬â€ sem JSON, sem navigate_to.
 
 1. Se o usuario pedir para NAVEGAR para alguma tela (ex: "ir para instrumentos"), retorne APENAS este JSON:
    {{"message": "Indo para instrumentos...", "navigate_to": "/instrumentos"}}
 
-2. Se o usuario fizer QUALQUER pergunta sobre instrumentos cadastrados — seja para listar, ver, contar, filtrar por tipo, status, vencimento, etc. (ex: "quantos micrometros temos?", "mostre os paquimetros", "quais estao em revisao", "instrumentos vencidos", "ver calibracoes a vencer") — retorne APENAS este JSON puro, sem nenhum texto antes ou depois:
+2. Se o usuario fizer QUALQUER pergunta sobre instrumentos cadastrados Ã¢â‚¬â€ seja para listar, ver, contar, filtrar por tipo, status, vencimento, etc. (ex: "quantos micrometros temos?", "mostre os paquimetros", "quais estao em revisao", "instrumentos vencidos", "ver calibracoes a vencer") Ã¢â‚¬â€ retorne APENAS este JSON puro, sem nenhum texto antes ou depois:
    {{"message": "Buscando instrumentos...", "listar_instrumentos": {{"termo": "micrometro", "status": "", "filtro_vencidos": false, "filtro_a_vencer": false}}}}
    - Use "termo" para filtrar por tipo/nome (ex: "micrometro", "paquimetro", "termometro"). Deixe vazio para todos.
-   - Use "status" EXATAMENTE um destes valores (com acento correto): "Aprovado", "Reprovado", "Inativo", "Em Calibração", "Em Manutenção", "Em Revisão", "Sem Calibração", "Pendente Aprovação". Deixe vazio para todos os status.
+   - Use "status" EXATAMENTE um destes valores (com acento correto): "Aprovado", "Reprovado", "Inativo", "Em CalibraÃƒÂ§ÃƒÂ£o", "Em ManutenÃƒÂ§ÃƒÂ£o", "Em RevisÃƒÂ£o", "Sem CalibraÃƒÂ§ÃƒÂ£o", "Pendente AprovaÃƒÂ§ÃƒÂ£o". Deixe vazio para todos os status.
    - Use "filtro_vencidos": true para instrumentos com calibracao vencida
    - Use "filtro_a_vencer": true para instrumentos que vencem nos proximos 30 dias
+   - Campos adicionais opcionais para busca avancada: "identificacao", "instrumento", "responsavel", "departamento", "data_inicio", "data_fim".
+   - "responsavel": nome da pessoa responsavel pelo instrumento (ex: "ana", "joao silva")
+   - "departamento": setor/departamento do instrumento (ex: "qualidade", "producao")
+   - "data_inicio" e "data_fim": formato YYYY-MM-DD, filtram por data_proxima_calibracao
    - CRITICO: retorne SOMENTE o JSON, sem explicacao, sem introducao, sem texto adicional
-
-4. Se o usuario fizer QUALQUER pergunta sobre LABORATORIOS DE CALIBRACAO (encontrar labs, responsavel, contato, RBC, acreditacao, etc):
-   Retorne APENAS este JSON:
-   {{"message": "Buscando...", "buscar_laboratorios": {{"termo": "<termo>", "tipo": "<tipo>"}}}}
-
-   "tipo" deve ser:
-   - "instrumento" → quer labs para calibrar um instrumento (ex: "paquimetro", "multimetro")
-   - "nome_lab"    → menciona nome de um lab (ex: "A E R Balancas")
-   - "rbc"         → menciona numero de acreditacao (ex: "850", "75")
-   - "livre"       → qualquer outra coisa sobre labs
-
-   "termo" deve ser:
-   - instrumento: nome corrigido do instrumento
-   - nome_lab: nome do lab EXATAMENTE como o usuario escreveu (corrija so ortografia basica)
-   - rbc: APENAS O NUMERO (ex: "850") sem letras
-   - livre: frase do usuario corrigida
-
-   EXEMPLOS:
-   - "onde calibro multimetro?" → {{"termo": "multimetro", "tipo": "instrumento"}}
-   - "A E R Balancas quem e o responsavel?" → {{"termo": "A E R Balancas", "tipo": "nome_lab"}}
-   - "responsavel pelo lab acreditacao 850" → {{"termo": "850", "tipo": "rbc"}}
-   CRITICO: retorne SOMENTE o JSON
 
 3. Para qualquer outra pergunta (sobre o sistema, como usar, etc.), responda em texto normal.
 """
@@ -643,7 +713,7 @@ INSTRUCOES:
             # Limpa backticks se a IA colocou ```json ... ```
             clean_resp = resposta.replace('```json', '').replace('```', '').strip()
 
-            # Extrai JSON mesmo se vier com texto antes (ex: "Aqui está: {...}")
+            # Extrai JSON mesmo se vier com texto antes (ex: "Aqui estÃƒÂ¡: {...}")
             json_match = re.search(r'\{.*\}', clean_resp, re.DOTALL)
             if json_match:
                 clean_resp = json_match.group(0)
@@ -652,7 +722,7 @@ INSTRUCOES:
             if clean_resp.startswith('{'):
                 resp_json = json.loads(clean_resp)
                 
-                # Caso 1: Navegação
+                # Caso 1: NavegaÃƒÂ§ÃƒÂ£o
                 if 'navigate_to' in resp_json:
                     return jsonify({
                         'success': True, 
@@ -660,7 +730,7 @@ INSTRUCOES:
                         'redirect_url': resp_json['navigate_to']
                     })
                 
-                # Caso 2: Checklist Automático
+                # Caso 2: Checklist AutomÃƒÂ¡tico
                 if 'checklist_data' in resp_json:
                      return jsonify({
                         'success': True,
@@ -668,11 +738,11 @@ INSTRUCOES:
                         'auto_checklist': resp_json['checklist_data']
                     })
 
-                # Caso 3: Gráfico de Calibração
+                # Caso 3: GrÃƒÂ¡fico de CalibraÃƒÂ§ÃƒÂ£o
                 if 'mostrar_grafico' in resp_json:
                     return jsonify({
                         'success': True,
-                        'message': resp_json.get('message', 'Gerando gráfico...'),
+                        'message': resp_json.get('message', 'Gerando grÃƒÂ¡fico...'),
                         'grafico': resp_json['mostrar_grafico'],
                         'token_usage': extractor.token_usage if extractor else {}
                     })
@@ -680,6 +750,7 @@ INSTRUCOES:
                 # Caso 4: Listar/Filtrar Instrumentos
                 if 'listar_instrumentos' in resp_json:
                     filtros = resp_json['listar_instrumentos']
+                    # SEGURANÃƒâ€¡A: usa apenas o user_id da requisiÃƒÂ§ÃƒÂ£o autenticada
                     uid = req_user_id or session.get('gocal_user_id') or ''
                     texto_resultado = _buscar_instrumentos_texto(uid, filtros)
                     return jsonify({
@@ -687,25 +758,6 @@ INSTRUCOES:
                         'message': texto_resultado,
                         'token_usage': extractor.token_usage if extractor else {}
                     })
-
-                # Caso 5: Buscar Laboratórios
-                if 'buscar_laboratorios' in resp_json:
-                    filtros_lab = resp_json['buscar_laboratorios']
-                    termo_lab = filtros_lab.get('termo', '')
-                    tipo_lab  = filtros_lab.get('tipo', 'livre')
-                    print(f"[CHAT-LAB] termo='{termo_lab}' tipo='{tipo_lab}'")
-                    # Busca e formata em texto (Passando lat/lon se disponivel)
-                    texto_labs = _buscar_laboratorios_texto(termo_lab, lat=lat, lon=lon, tipo=tipo_lab)
-                    return jsonify({
-                        'success': True,
-                        'message': texto_labs,
-                        'buscar_laboratorios': {'termo': termo_lab}, # Mantém para cards se o JS quiser
-                        'token_usage': extractor.token_usage if extractor else {}
-                    })
-                # Caso genérico: IA retornou JSON com message - extrai o texto
-                if 'message' in resp_json:
-                    resposta = resp_json['message']
-
         except:
             pass # Nao e JSON, segue normal
 
@@ -715,137 +767,236 @@ INSTRUCOES:
     except Exception as e:
         error_msg = str(e)
         if "429" in error_msg:
-             return jsonify({'success': True, 'message': '⏳ **Muitas requisições.** Estamos operando no limite da IA. Aguarde alguns segundos e tente de novo.'})
+             return jsonify({'success': True, 'message': 'Ã¢ÂÂ³ **Muitas requisiÃƒÂ§ÃƒÂµes.** Estamos operando no limite da IA. Aguarde alguns segundos e tente de novo.'})
 
         print(f"[ERRO] Chat Msg: {e}")
-        return jsonify({'success': False, 'message': f'Erro técnico: {error_msg}'})
+        return jsonify({'success': False, 'message': f'Erro tÃƒÂ©cnico: {error_msg}'})
 
 
+@app.route('/chat-mensagem-v2', methods=['POST'])
+def chat_mensagem_v2():
+    """
+    [NOVO] Versão V2 do chat com suporte a busca de laboratórios.
+    Segue o padrão Non-Destructive (não substitui a rota original).
+    """
+    if 'session_id' not in session:
+        session['session_id'] = str(uuid.uuid4())
+    
+    session_id = session['session_id']
+    data = request.get_json()
+    message = data.get('message', '')
+    req_user_id = data.get('user_id') or session.get('gocal_user_id') or ''
+    lat = data.get('lat')
+    lon = data.get('lon')
+
+    print(f"[CHAT-MSG-V2] Msg: {message} | geo: lat={lat} lon={lon}")
+
+    try:
+        # Prompt atualizado com instrucao completa para laboratorios
+        prompt = f"""Voce e o Metron, assistente do sistema Gocal.
+
+IMPORTANTE: Voce SOMENTE pode falar sobre dados do usuario autenticado (user_id={req_user_id or 'NAO IDENTIFICADO'}).
+
+USUARIO: "{message}"
+
+INSTRUCOES ESPECIFICAS:
+1. Se o usuario perguntar sobre INSTRUMENTOS (listar, ver, contar, filtrar, quem tem, departamento, responsavel):
+   Retorne JSON: {{"message": "Buscando instrumentos...", "listar_instrumentos": {{"termo": "...", "status": "", "filtro_vencidos": false, "filtro_a_vencer": false, "responsavel": "", "departamento": "", "identificacao": "", "instrumento": "", "data_inicio": "", "data_fim": ""}}}}
+   - "termo": busca geral em nome, tag, descricao, responsavel e departamento
+   - "responsavel": nome exato da pessoa (ex: "ana", "joao silva") quando usuario perguntar "quem tem", "com ana", "do joao"
+   - "departamento": setor/area (ex: "qualidade", "producao")
+   - "identificacao": tag/codigo do instrumento (ex: "PAQ-001")
+   - "instrumento": tipo/descricao do instrumento (ex: "paquimetro digital")
+   - "status": "Aprovado", "Reprovado", "Inativo", "Em Calibracao", "Em Manutencao", "Em Revisao", "Sem Calibracao", "Pendente Aprovacao" (ou vazio)
+   - "data_inicio" e "data_fim": formato YYYY-MM-DD para filtrar por data_proxima_calibracao
+   - CRITICO: retorne SOMENTE o JSON
+
+2. Se o usuario fizer QUALQUER pergunta sobre LABORATORIOS DE CALIBRACAO (encontrar labs, responsavel, contato, RBC, acreditacao, distancia, mais perto, etc):
+   Retorne APENAS este JSON:
+   {{"message": "Buscando...", "buscar_laboratorios": {{"termo": "<termo>", "tipo": "<tipo>"}}}}
+
+   "tipo" deve ser:
+   - "instrumento" -> quer labs para calibrar um instrumento (ex: "paquimetro", "multimetro")
+   - "nome_lab"    -> menciona nome de um lab (ex: "A E R Balancas")
+   - "rbc"         -> menciona numero de acreditacao (ex: "850", "75")
+   - "livre"       -> qualquer outra coisa sobre labs
+
+   "termo" deve ser:
+   - instrumento: nome do instrumento (ex: "paquimetro")
+   - nome_lab: nome do lab exatamente como o usuario escreveu (corrija so ortografia basica)
+   - rbc: APENAS O NUMERO (ex: "850") sem letras
+   - livre: frase do usuario corrigida
+
+   EXEMPLOS:
+   - "onde calibro multimetro?" -> {{"termo": "multimetro", "tipo": "instrumento"}}
+   - "qual lab de paq esta mais perto?" -> {{"termo": "paquimetro", "tipo": "instrumento"}}
+   - "A E R Balancas quem e o responsavel?" -> {{"termo": "A E R Balancas", "tipo": "nome_lab"}}
+   - "responsavel pelo lab acreditacao 850" -> {{"termo": "850", "tipo": "rbc"}}
+   CRITICO: retorne SOMENTE o JSON
+
+3. Para outras perguntas, responda em texto normal.
+"""
+        
+        # Chamada à IA (Reutilizando lógica existente ou adapter)
+        if hasattr(extractor, 'ask'):
+             resposta = extractor.ask(prompt)
+        else:
+            client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+            completion = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            resposta = completion.choices[0].message.content
+
+        # Tratamento da Resposta
+        try:
+            clean_resp = resposta.replace('```json', '').replace('```', '').strip()
+            if clean_resp.startswith('{'):
+                resp_json = json.loads(clean_resp)
+
+                # Tratamento de Laboratorios (sistema completo com geo e RBC)
+                if 'buscar_laboratorios' in resp_json:
+                    filtros_lab = resp_json['buscar_laboratorios']
+                    termo_lab = filtros_lab.get('termo', '')
+                    tipo_lab = filtros_lab.get('tipo', 'livre')
+                    print(f"[CHAT-LAB] termo='{termo_lab}' tipo='{tipo_lab}'")
+                    # Busca dados estruturados para cards no frontend
+                    if tipo_lab in ('instrumento', 'livre'):
+                        labs_data = _buscar_laboratorios_para_instrumento(termo_lab, lat=lat, lon=lon, limit=8)
+                    else:
+                        labs_data = _consultar_detalhes_laboratorio(termo_lab, lat=lat, lon=lon)
+                    # Fallback texto caso nao haja dados estruturados
+                    if not labs_data:
+                        texto_labs = _buscar_laboratorios_texto(termo_lab, lat=lat, lon=lon, tipo=tipo_lab)
+                    else:
+                        texto_labs = f"Encontrei {len(labs_data)} laboratorio(s) para {termo_lab}."
+                    return jsonify({
+                        'success': True,
+                        'message': texto_labs,
+                        'labs_data': labs_data,
+                        'termo_lab': termo_lab,
+                        'por_distancia': lat is not None,
+                        'token_usage': extractor.token_usage if extractor else {}
+                    })
+
+                # Fallback: listar_laboratorios (chave antiga, mantida para compatibilidade)
+                if 'listar_laboratorios' in resp_json:
+                    filtros = resp_json['listar_laboratorios']
+                    texto_resultado = _buscar_laboratorios_texto_v2(req_user_id, filtros)
+                    return jsonify({
+                        'success': True,
+                        'message': texto_resultado,
+                        'token_usage': extractor.token_usage if extractor else {}
+                    })
+                
+                # Mantém compatibilidade com instrumentos
+                if 'listar_instrumentos' in resp_json:
+                    filtros = resp_json['listar_instrumentos']
+                    texto_resultado = _buscar_instrumentos_texto(req_user_id, filtros)
+                    return jsonify({
+                        'success': True,
+                        'message': texto_resultado,
+                        'token_usage': extractor.token_usage if extractor else {}
+                    })
+
+                # JSON simples com só 'message': extrai o texto em vez de retornar o JSON cru
+                if 'message' in resp_json:
+                    return jsonify({'success': True, 'message': resp_json['message']})
+
+        except Exception as e:
+            print(f"[V2] Erro parse JSON: {e}")
+            pass
+
+        return jsonify({'success': True, 'message': resposta})
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Erro V2: {str(e)}'})
 
 
-def _buscar_instrumentos_texto(user_id, filtros):
-    """Consulta o banco e retorna resposta formatada em texto para o chat.
-    SEGURANÇA: sempre filtra por user_id — nunca retorna dados de outro usuário."""
-    if not user_id:
-        return "Não foi possível identificar o usuário. Faça login novamente."
+def _buscar_laboratorios_texto_v2(user_id, filtros):
+    """
+    [NOVO] Busca laboratórios no banco e retorna resumo em texto.
+    """
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor(dictionary=True)
-
+        
         termo = (filtros.get('termo') or '').strip()
-        status = (filtros.get('status') or '').strip()
-        filtro_vencidos = bool(filtros.get('filtro_vencidos'))
-        filtro_a_vencer = bool(filtros.get('filtro_a_vencer'))
-
-        sql = """
-            SELECT i.identificacao, i.nome, i.status,
-                   c.data_proxima_calibracao
-            FROM instrumentos i
-            LEFT JOIN calibracoes c ON c.id = (
-                SELECT id FROM calibracoes WHERE instrumento_id = i.id ORDER BY data_calibracao DESC LIMIT 1
-            )
-            WHERE i.user_id = %s
-        """
-        params = [user_id]
-
+        
+        # [ATUALIZADO] Busca mais robusta (Nome, Contato, Email, Cidade, Estado)
+        sql = "SELECT nome, contato, email, cidade, estado FROM laboratorios WHERE 1=1"
+        params = []
+        
         if termo:
-            sql += " AND (i.identificacao LIKE %s OR i.nome LIKE %s OR i.descricao LIKE %s)"
-            params += [f'%{termo}%', f'%{termo}%', f'%{termo}%']
-
-        if status:
-            sql += " AND i.status = %s"
-            params.append(status)
-
-        if filtro_vencidos:
-            sql += " AND c.data_proxima_calibracao <= CURDATE()"
-
-        if filtro_a_vencer:
-            sql += " AND c.data_proxima_calibracao BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)"
-
-        sql += " ORDER BY i.identificacao LIMIT 50"
-
+            sql += " AND (nome LIKE %s OR contato LIKE %s OR email LIKE %s OR cidade LIKE %s OR estado LIKE %s)"
+            wildcard = f'%{termo}%'
+            params.extend([wildcard, wildcard, wildcard, wildcard, wildcard])
+            
+        sql += " ORDER BY nome ASC LIMIT 50"
+        
         cursor.execute(sql, params)
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
-
+        
         if not rows:
-            return "Nenhum instrumento encontrado com esses filtros."
-
-        linhas = [f"Encontrei **{len(rows)}** instrumento(s):\n"]
+            return "Nenhum laboratório encontrado com esse termo."
+            
+        msg = f"Encontrei **{len(rows)}** laboratório(s):\n"
         for r in rows:
-            prox = str(r['data_proxima_calibracao']) if r.get('data_proxima_calibracao') else 'sem data'
-            linhas.append(f"• **{r['identificacao']}** — {r['nome']} | {r['status']} | Próx. calib.: {prox}")
-
-        return "\n".join(linhas)
+            local = f" ({r.get('cidade')}/{r.get('estado')})" if r.get('cidade') else ""
+            msg += f"- **{r.get('nome')}**{local}\n"
+            
+        return msg
     except Exception as e:
-        print(f"[ERRO] _buscar_instrumentos_texto: {e}")
-        return "Erro ao buscar instrumentos no banco de dados."
+        print(f"[ERRO] Busca Lab V2: {e}")
+        return "Erro ao buscar laboratórios no banco de dados."
 
 
+# ============================================================
+# BUSCA DE LABORATORIOS (tabela laboratorio + escopo_calibracao)
+# Portado do commit db58609 - sistema completo com geo e RBC
+# ============================================================
 
+_INSTRUMENTO_ALIASES = {
+    'multimetro': ['tensao', 'corrente', 'resistencia', 'eletric'],
+    'multimetro': ['tensao', 'corrente', 'resistencia', 'eletric'],
+    'voltimetro': ['tensao'],
+    'amperimetro': ['corrente'],
+    'ohmimetro': ['resistencia'],
+    'termometro': ['temperatura', 'termometria'],
+    'termopar': ['termopar', 'temperatura'],
+    'paquimetro': ['comprimento', 'paquimetro', 'dimensional'],
+    'micrometro': ['comprimento', 'micrometro', 'dimensional'],
+    'balanca': ['massa', 'balanca'],
+    'manometro': ['pressao', 'manometro'],
+    'torquimetro': ['torque', 'torquimetro'],
+    'cronometro': ['tempo', 'intervalo'],
+    'higrometro': ['umidade', 'higro'],
+    'durometro': ['dureza'],
+    'rugosimetro': ['rugosidade'],
+    'osciloscópio': ['tensao', 'frequencia', 'eletric'],
+    'calibrador': ['calibrador'],
+    'trena': ['comprimento', 'dimensional'],
+    'nivel': ['angulo', 'nivel'],
+    'pipeta': ['volume'],
+    'bureta': ['volume'],
+    'proveta': ['volume'],
+}
 
-def _buscar_laboratorios_texto(termo, lat=None, lon=None, tipo='livre'):
-    """Consulta o banco e retorna resposta formatada em texto para o chat.
-    tipo: 'instrumento', 'nome_lab', 'rbc', 'livre'
-    """
-    print(f"[LAB-TEXTO] termo='{termo}' tipo='{tipo}' lat={lat} lon={lon}")
-    try:
-        labs_detalhe = []
-        labs_lista   = []
-
-        if tipo in ('rbc', 'nome_lab'):
-            # Busca direta na tabela laboratorio
-            labs_detalhe = _consultar_detalhes_laboratorio(termo, lat=lat, lon=lon)
-
-        elif tipo == 'instrumento':
-            # Busca por escopo de calibração
-            labs_lista = _buscar_laboratorios_para_instrumento(termo, lat=lat, lon=lon, limit=5)
-
-        else:  # livre
-            # Tenta instrumento primeiro, depois nome de lab
-            labs_lista = _buscar_laboratorios_para_instrumento(termo, lat=lat, lon=lon, limit=5)
-            if not labs_lista:
-                labs_detalhe = _consultar_detalhes_laboratorio(termo, lat=lat, lon=lon)
-
-        # FORMATAÇÃO: detalhes de lab específico
-        if labs_detalhe:
-            linhas = []
-            for l in labs_detalhe:
-                dist = f" ({l['distancia_km']}km)" if l.get('distancia_km') is not None else ""
-                linhas.append(f"Aqui estão os dados do laboratório **{l['nome_laboratorio']}** [RBC {l.get('acreditacao_num', '')}]:\n")
-                linhas.append(f"• **Responsável:** {l.get('gerente_tecnico') or 'Não informado'}")
-                linhas.append(f"• **Localização:** {l.get('endereco', '')} — {l.get('cidade', '')}/{l.get('uf', '')}{dist}")
-                linhas.append(f"• **E-mail:** {l.get('email', 'não informado')}")
-                linhas.append(f"• **Telefone:** {l.get('telefone', 'não informado')}")
-                if l.get('situacao'): linhas.append(f"• **Situação:** {l['situacao']}")
-                linhas.append("")
-            return "\n".join(linhas).strip()
-
-        # FORMATAÇÃO: lista de labs por instrumento
-        if labs_lista:
-            linhas = [f"Encontrei **{len(labs_lista)}** laboratório(s) para **{termo}**:\n"]
-            for l in labs_lista:
-                dist = f" ({l['distancia_km']}km)" if l.get('distancia_km') is not None else ""
-                acred = f" [RBC {l['acreditacao_num']}]" if l.get('acreditacao_num') else ""
-                linhas.append(f"• **{l['nome_laboratorio']}**{dist}{acred} - {l['cidade']}/{l['uf']}")
-            return "\n".join(linhas)
-
-        return f"Não encontrei laboratórios para **{termo}** no banco. Tente outro termo."
-
-    except Exception as e:
-        print(f"[ERRO] _buscar_laboratorios_texto: {e}")
-        return "Erro ao buscar laboratórios no banco."
 
 def _consultar_detalhes_laboratorio(termo, lat=None, lon=None):
     """Consulta dados diretos da tabela laboratorio pelo nome ou RBC.
-    Estratégia: tenta por RBC, depois LIKE completo, depois palavras individuais."""
+    Estrategia: tenta por RBC, depois LIKE completo, depois palavras individuais."""
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
 
-        lat_v  = float(lat)  if lat  else 0
-        lon_v  = float(lon)  if lon  else 0
+        lat_v = float(lat) if lat else 0
+        lon_v = float(lon) if lon else 0
 
         base_select = """
             SELECT id, nome_laboratorio, razao_social, acreditacao_num, uf, cidade,
@@ -860,32 +1011,27 @@ def _consultar_detalhes_laboratorio(termo, lat=None, lon=None):
         """
         params_geo = (lat_v, lon_v, lat_v)
 
-        # 1. Por número RBC (ex: "RBC 850" ou "850")
+        # 1. Por numero RBC
         rbc_match = re.search(r'\b(\d+)\b', termo)
         if rbc_match:
             rbc_num = rbc_match.group(1)
-            print(f"[LAB-DETALHE] Tentando por RBC={rbc_num}")
             cur.execute(base_select + " WHERE acreditacao_num = %s LIMIT 1",
                         params_geo + (rbc_num,))
             res = cur.fetchall()
-            print(f"[LAB-DETALHE] Resultado RBC: {len(res)} linha(s)")
             if res:
                 cur.close(); conn.close()
                 return res
 
         # 2. LIKE completo no nome ou razao social
-        print(f"[LAB-DETALHE] Tentando LIKE '{termo}'")
         cur.execute(base_select + " WHERE nome_laboratorio LIKE %s OR razao_social LIKE %s LIMIT 1",
                     params_geo + (f'%{termo}%', f'%{termo}%'))
         res = cur.fetchall()
-        print(f"[LAB-DETALHE] Resultado LIKE: {len(res)} linha(s)")
         if res:
             cur.close(); conn.close()
             return res
 
-        # 3. Cada palavra com >= 3 chars como condição OR
+        # 3. Cada palavra com >= 3 chars como condicao OR
         palavras = [p for p in re.split(r'\s+', termo) if len(p) >= 3]
-        print(f"[LAB-DETALHE] Tentando por palavras: {palavras}")
         if palavras:
             conditions = " OR ".join(["nome_laboratorio LIKE %s OR razao_social LIKE %s"] * len(palavras))
             word_params = []
@@ -894,90 +1040,20 @@ def _consultar_detalhes_laboratorio(termo, lat=None, lon=None):
             cur.execute(base_select + f" WHERE {conditions} LIMIT 3",
                         params_geo + tuple(word_params))
             res = cur.fetchall()
-            print(f"[LAB-DETALHE] Resultado palavras: {len(res)} linha(s)")
             if res:
                 cur.close(); conn.close()
                 return res
 
         cur.close(); conn.close()
-        print(f"[LAB-DETALHE] Nenhum resultado para '{termo}'")
         return []
     except Exception as e:
         print(f"[ERRO] _consultar_detalhes_laboratorio: {e}")
         return []
 
 
-# ============================================================
-# BUSCA DE LABORATÓRIOS POR INSTRUMENTO
-# ============================================================
-_INSTRUMENTO_ALIASES = {
-    'multimetro': ['tensao', 'corrente', 'resistencia', 'eletric'],
-    'multímetro': ['tensao', 'corrente', 'resistencia', 'eletric'],
-    'voltimetro': ['tensao'],
-    'voltímetro': ['tensao'],
-    'amperimetro': ['corrente'],
-    'amperímetro': ['corrente'],
-    'ohmimetro': ['resistencia'],
-    'ohmímetro': ['resistencia'],
-    'termometro': ['temperatura', 'termometria'],
-    'termômetro': ['temperatura', 'termometria'],
-    'termopar': ['termopar', 'temperatura'],
-    'paquimetro': ['comprimento', 'paquimetro', 'dimensional'],
-    'paquímetro': ['comprimento', 'paquimetro', 'dimensional'],
-    'micrometro': ['comprimento', 'micrometro', 'dimensional'],
-    'micrômetro': ['comprimento', 'micrometro', 'dimensional'],
-    'balanca': ['massa', 'balanca'],
-    'balança': ['massa', 'balanca'],
-    'manometro': ['pressao', 'manometro'],
-    'manômetro': ['pressao', 'manometro'],
-    'torquimetro': ['torque', 'torquimetro'],
-    'torquímetro': ['torque', 'torquimetro'],
-    'cronometro': ['tempo', 'intervalo'],
-    'cronômetro': ['tempo', 'intervalo'],
-    'higrometro': ['umidade', 'higro'],
-    'higrômetro': ['umidade', 'higro'],
-    'durometro': ['dureza'],
-    'durômetro': ['dureza'],
-    'rugosimetro': ['rugosidade'],
-    'rugosímetro': ['rugosidade'],
-    'osciloscópio': ['tensao', 'frequencia', 'eletric'],
-    'osciloscópio': ['tensao', 'frequencia'],
-    'calibrador': ['calibrador'],
-    'trena': ['comprimento', 'dimensional'],
-    'pino': ['comprimento', 'dimensional'],
-    'nivel': ['angulo', 'nivel'],
-    'nível': ['angulo', 'nivel'],
-    'pipeta': ['volume'],
-    'bureta': ['volume'],
-    'proveta': ['volume'],
-}
-
-def _extrair_termo_instrumento(message):
-    """Extrai o nome do instrumento de uma pergunta sobre laboratórios."""
-    msg = message.lower().strip()
-    # Remove frases comuns que não são o instrumento
-    stop_phrases = [
-        'qual laboratório calibra', 'qual laboratorio calibra',
-        'qual lab calibra', 'laboratório que calibra', 'laboratorio que calibra',
-        'onde posso calibrar', 'onde calibrar', 'onde vou calibrar',
-        'laboratório para calibrar', 'laboratorio para calibrar',
-        'quero calibrar', 'preciso calibrar', 'tem laboratório para',
-        'tem laboratorio para', 'qual laboratório faz', 'qual lab faz',
-        'buscar laboratório', 'buscar laboratorio', 'encontrar laboratório',
-        'laboratorio para', 'laboratório para', 'laboratório de calibração de',
-        'laboratorio de calibracao de', 'laboratorio calibra', 'laboratório calibra',
-        'calibração de', 'calibracao de', 'calibra', 'meu', 'minha', 'o ', 'a ',
-        'um ', 'uma ', '?', '!'
-    ]
-    for phrase in stop_phrases:
-        msg = msg.replace(phrase, ' ')
-    msg = re.sub(r'\s+', ' ', msg).strip().strip('.,?!')
-    return msg if len(msg) > 1 else message.strip()
-
-
 def _buscar_laboratorios_para_instrumento(termo, lat=None, lon=None, limit=8):
-    """Busca laboratórios acreditados para calibrar um instrumento.
-    Se lat/lon fornecidos, ordena por distância (Haversine). Caso contrário, por nome."""
+    """Busca laboratorios acreditados para calibrar um instrumento.
+    Se lat/lon fornecidos, ordena por distancia (Haversine)."""
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
@@ -1030,39 +1106,124 @@ def _buscar_laboratorios_para_instrumento(termo, lat=None, lon=None, limit=8):
         return []
 
 
-@app.route('/buscar-laboratorios', methods=['POST'])
-def buscar_laboratorios():
-    """Busca laboratórios aptos a calibrar um instrumento específico.
-    Aceita lat/lon para ordenação por distância."""
-    data = request.get_json()
-    message  = data.get('message', '')
-    termo_ia = data.get('termo_ia')
-    lat = data.get('lat')
-    lon = data.get('lon')
+def _buscar_laboratorios_texto(termo, lat=None, lon=None, tipo='livre'):
+    """Consulta o banco e retorna resposta formatada em texto para o chat.
+    tipo: 'instrumento', 'nome_lab', 'rbc', 'livre'
+    """
+    print(f"[LAB-TEXTO] termo='{termo}' tipo='{tipo}' lat={lat} lon={lon}")
+    try:
+        labs_detalhe = []
+        labs_lista = []
 
-    if not message and not termo_ia:
-        return jsonify({'success': False, 'message': 'Parâmetro não informado.'})
+        if tipo in ('rbc', 'nome_lab'):
+            labs_detalhe = _consultar_detalhes_laboratorio(termo, lat=lat, lon=lon)
+        elif tipo == 'instrumento':
+            labs_lista = _buscar_laboratorios_para_instrumento(termo, lat=lat, lon=lon, limit=5)
+        else:  # livre
+            labs_lista = _buscar_laboratorios_para_instrumento(termo, lat=lat, lon=lon, limit=5)
+            if not labs_lista:
+                labs_detalhe = _consultar_detalhes_laboratorio(termo, lat=lat, lon=lon)
 
-    # Prioriza o termo extraído pela IA (que já corrigiu typos)
-    termo = termo_ia if termo_ia else _extrair_termo_instrumento(message)
-    print(f"[LAB-SEARCH] Termo extraído: '{termo}' | lat={lat} lon={lon}")
+        # Formatacao: detalhes de lab especifico
+        if labs_detalhe:
+            linhas = []
+            for l in labs_detalhe:
+                dist = f" ({l['distancia_km']}km)" if l.get('distancia_km') is not None else ""
+                linhas.append(f"Dados do laboratorio **{l['nome_laboratorio']}** [RBC {l.get('acreditacao_num', '')}]:\n")
+                linhas.append(f"- **Responsavel:** {l.get('gerente_tecnico') or 'Nao informado'}")
+                linhas.append(f"- **Localizacao:** {l.get('endereco', '')} - {l.get('cidade', '')}/{l.get('uf', '')}{dist}")
+                linhas.append(f"- **E-mail:** {l.get('email', 'nao informado')}")
+                linhas.append(f"- **Telefone:** {l.get('telefone', 'nao informado')}")
+                if l.get('situacao'):
+                    linhas.append(f"- **Situacao:** {l['situacao']}")
+                linhas.append("")
+            return "\n".join(linhas).strip()
 
-    labs = _buscar_laboratorios_para_instrumento(termo, lat=lat, lon=lon, limit=8)
+        # Formatacao: lista de labs por instrumento
+        if labs_lista:
+            linhas = [f"Encontrei **{len(labs_lista)}** laboratorio(s) para **{termo}**:\n"]
+            for l in labs_lista:
+                dist = f" ({l['distancia_km']}km)" if l.get('distancia_km') is not None else ""
+                acred = f" [RBC {l['acreditacao_num']}]" if l.get('acreditacao_num') else ""
+                linhas.append(f"- **{l['nome_laboratorio']}**{dist}{acred} - {l['cidade']}/{l['uf']}")
+            return "\n".join(linhas)
 
-    if not labs:
-        return jsonify({
-            'success': True,
-            'message': f'Não encontrei laboratórios acreditados para **{termo}** no banco. Tente um termo diferente (ex: "paquímetro", "termômetro", "balança").',
-            'laboratorios': []
-        })
+        return f"Nao encontrei laboratorios para **{termo}** no banco. Tente outro termo."
 
-    return jsonify({
-        'success': True,
-        'message': f'Encontrei {len(labs)} laboratório(s) para **{termo}**:',
-        'laboratorios': labs,
-        'termo': termo,
-        'por_distancia': lat is not None
-    })
+    except Exception as e:
+        print(f"[ERRO] _buscar_laboratorios_texto: {e}")
+        return "Erro ao buscar laboratorios no banco."
+
+
+@app.route('/buscar-laboratorios-v2', methods=['GET'])
+def buscar_laboratorios_v2():
+    """[NOVO] Rota para o frontend buscar lista estruturada de laboratórios"""
+    try:
+        termo = request.args.get('termo', '')
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor(dictionary=True)
+        
+        # [ATUALIZADO] Query expandida para o Widget
+        sql = "SELECT id, nome, contato, email, telefone, cidade, estado FROM laboratorios WHERE 1=1"
+        params = []
+        if termo:
+            sql += " AND (nome LIKE %s OR contato LIKE %s OR email LIKE %s OR cidade LIKE %s OR estado LIKE %s)"
+            wildcard = f'%{termo}%'
+            params.extend([wildcard, wildcard, wildcard, wildcard, wildcard])
+        
+        sql += " ORDER BY nome ASC LIMIT 50"
+        
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        return jsonify({'success': True, 'items': rows})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+def _buscar_instrumentos_texto(user_id, filtros):
+    """Consulta o banco e retorna resposta formatada em texto para o chat.
+    SEGURANÃƒâ€¡A: sempre filtra por user_id Ã¢â‚¬â€ nunca retorna dados de outro usuÃƒÂ¡rio."""
+    if not user_id:
+        return "NÃƒÂ£o foi possÃƒÂ­vel identificar o usuÃƒÂ¡rio. FaÃƒÂ§a login novamente."
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+            SELECT i.identificacao, i.nome, i.status,
+                   c.data_proxima_calibracao
+            FROM instrumentos i
+            LEFT JOIN calibracoes c ON c.id = (
+                SELECT id FROM calibracoes WHERE instrumento_id = i.id ORDER BY data_calibracao DESC LIMIT 1
+            )
+            WHERE i.user_id = %s
+        """
+        params = [user_id]
+        sql, params = _aplicar_filtros_instrumentos_sql_v2(sql, params, filtros or {})
+
+        sql += " ORDER BY i.identificacao LIMIT 50"
+
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        if not rows:
+            return "Nenhum instrumento encontrado com esses filtros."
+
+        linhas = [f"Encontrei **{len(rows)}** instrumento(s):\n"]
+        for r in rows:
+            prox = str(r['data_proxima_calibracao']) if r.get('data_proxima_calibracao') else 'sem data'
+            linhas.append(f"- **{r['identificacao']}** - {r['nome']} | {r['status']} | Prox. calib.: {prox}")
+
+        return "\n".join(linhas)
+
+    except Exception as e:
+        print(f"[ERRO] _buscar_instrumentos_texto: {e}")
+        return "Erro ao buscar instrumentos no banco de dados."
 
 
 @app.route('/buscar-instrumentos', methods=['GET'])
@@ -1070,12 +1231,20 @@ def buscar_instrumentos():
     """Busca instrumentos com filtros para o chat"""
     user_id = request.args.get('user_id') or session.get('gocal_user_id')
     if not user_id:
-        return jsonify({'success': False, 'items': [], 'message': 'Usuário não identificado.'})
+        return jsonify({'success': False, 'items': [], 'message': 'UsuÃƒÂ¡rio nÃƒÂ£o identificado.'})
 
-    termo = request.args.get('termo', '').strip()
-    status = request.args.get('status', '').strip()
-    filtro_vencidos = request.args.get('filtro_vencidos', '0') == '1'
-    filtro_a_vencer = request.args.get('filtro_a_vencer', '0') == '1'
+    filtros = {
+        'termo': request.args.get('termo', '').strip(),
+        'status': request.args.get('status', '').strip(),
+        'filtro_vencidos': request.args.get('filtro_vencidos', '0'),
+        'filtro_a_vencer': request.args.get('filtro_a_vencer', '0'),
+        'identificacao': request.args.get('identificacao', '').strip(),
+        'instrumento': request.args.get('instrumento', '').strip(),
+        'responsavel': request.args.get('responsavel', '').strip(),
+        'departamento': request.args.get('departamento', '').strip(),
+        'data_inicio': request.args.get('data_inicio', '').strip(),
+        'data_fim': request.args.get('data_fim', '').strip(),
+    }
 
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -1093,19 +1262,7 @@ def buscar_instrumentos():
         """
         params = [user_id]
 
-        if termo:
-            sql += " AND (i.identificacao LIKE %s OR i.nome LIKE %s OR i.descricao LIKE %s)"
-            params += [f'%{termo}%', f'%{termo}%', f'%{termo}%']
-
-        if status:
-            sql += " AND i.status = %s"
-            params.append(status)
-
-        if filtro_vencidos:
-            sql += " AND c.data_proxima_calibracao <= CURDATE()"
-
-        if filtro_a_vencer:
-            sql += " AND c.data_proxima_calibracao BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)"
+        sql, params = _aplicar_filtros_instrumentos_sql_v2(sql, params, filtros)
 
         sql += " ORDER BY i.identificacao LIMIT 50"
 
@@ -1249,7 +1406,7 @@ def upload_async():
                  # Paralelismo
                  with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                      # Usa as_completed para atualizar contador realtime? 
-                     # Ou map simples. Map é mais facil de coletar ordem, mas as_completed é melhor pra progresso.
+                     # Ou map simples. Map ÃƒÂ© mais facil de coletar ordem, mas as_completed ÃƒÂ© melhor pra progresso.
                      future_to_file = {executor.submit(process_one, f): f[1] for f in files_info}
                      
                      for future in concurrent.futures.as_completed(future_to_file):
@@ -1270,7 +1427,7 @@ def upload_async():
                  print(f"[TASK-ERR] {e}")
                  processing_tasks[tid]['status'] = 'error'
 
-        # Lança thread solta
+        # LanÃƒÂ§a thread solta
         threading.Thread(target=run_job, args=(task_id, temp_files_info, session_id, comando)).start()
         
         return jsonify({'success': True, 'task_id': task_id})
@@ -1306,10 +1463,10 @@ def check_status(task_id):
 # ============================================================
 # ROTAS - BANCO DE DADOS (MySQL)
 # ============================================================
-# Normalização de Status para o padrão do Gocal
+# NormalizaÃƒÂ§ÃƒÂ£o de Status para o padrÃƒÂ£o do Gocal
 def normalizar_status(valor):
     if not valor:
-        return 'Em Revisão'
+        return 'Em RevisÃƒÂ£o'
     
 def normalizar_data(data_str):
     """Converte DD/MM/YYYY ou similar para YYYY-MM-DD"""
@@ -1411,7 +1568,7 @@ def inserir_banco():
                             buscar_valor('patrimonio', inst) or \
                             buscar_valor('numero_certificado', inst) or 'n/i'
 
-            # Verifica se instrumento já existe
+            # Verifica se instrumento jÃƒÂ¡ existe
             cursor.execute(
                 "SELECT id FROM instrumentos WHERE identificacao = %s AND user_id = %s LIMIT 1",
                 (identificacao, user_id)
@@ -1419,21 +1576,21 @@ def inserir_banco():
             existente = cursor.fetchone()
             if existente:
                 instrumento_id_existente = existente[0]
-                # Extrai dados da calibração do PDF
+                # Extrai dados da calibraÃƒÂ§ÃƒÂ£o do PDF
                 data_calib_dup = buscar_valor('data_calibracao', inst)
                 # PRIORIDADE TOTAL para numero_certificado
                 numero_cert_dup = buscar_valor('numero_certificado', inst) or \
                                   buscar_valor('numero_calibracao', inst) or \
                                   identificacao
                 
-                print(f"[DEBUG] Extraido para calibração: cert={numero_cert_dup}, tag={identificacao}")
+                print(f"[DEBUG] Extraido para calibraÃƒÂ§ÃƒÂ£o: cert={numero_cert_dup}, tag={identificacao}")
 
                 laboratorio_dup = buscar_valor('laboratorio', inst) or buscar_valor('laboratorio_responsavel', inst) or 'N/I'
                 validade_dup = buscar_valor('validade', inst) or buscar_valor('data_proxima_calibracao', inst)
-                motivo_dup = buscar_valor('motivo_calibracao', inst, 'Calibração Periódica') or 'Calibração Periódica'
-                status_dup = normalizar_status(buscar_valor('status', inst)) or 'Em Revisão'
+                motivo_dup = buscar_valor('motivo_calibracao', inst, 'CalibraÃƒÂ§ÃƒÂ£o PeriÃƒÂ³dica') or 'CalibraÃƒÂ§ÃƒÂ£o PeriÃƒÂ³dica'
+                status_dup = normalizar_status(buscar_valor('status', inst)) or 'Em RevisÃƒÂ£o'
 
-                # Verifica se já existe calibração com mesmo número de certificado E mesma data
+                # Verifica se jÃƒÂ¡ existe calibraÃƒÂ§ÃƒÂ£o com mesmo nÃƒÂºmero de certificado E mesma data
                 print(f"[DEBUG] Instrumento existente id={instrumento_id_existente}, numero_cert='{numero_cert_dup}', data_calib='{data_calib_dup}'")
                 cursor.execute(
                     "SELECT id FROM calibracoes WHERE instrumento_id = %s AND numero_calibracao = %s AND data_calibracao = %s LIMIT 1",
@@ -1445,7 +1602,7 @@ def inserir_banco():
                     total_ignorados += 1
                     continue
 
-                # Instrumento existe mas calibração é nova — insere só a calibração
+                # Instrumento existe mas calibraÃƒÂ§ÃƒÂ£o ÃƒÂ© nova Ã¢â‚¬â€ insere sÃƒÂ³ a calibraÃƒÂ§ÃƒÂ£o
                 try:
                     sql_cal_dup = """
                         INSERT INTO calibracoes (
@@ -1462,7 +1619,7 @@ def inserir_banco():
                         numero_cert_dup, '',
                         laboratorio_dup, motivo_dup,
                         normalizar_data(data_calib_dup), normalizar_data(validade_dup),
-                        'Em Revisão', status_dup
+                        'Em RevisÃƒÂ£o', status_dup
                     ))
                     calibracao_id_dup = cursor.lastrowid
                     print(f"[DB] Calibracao #{calibracao_id_dup} adicionada ao instrumento existente #{instrumento_id_existente}")
@@ -1508,12 +1665,12 @@ def inserir_banco():
             periodicidade = buscar_valor('periodicidade', inst, 12)
             departamento = ""
             responsavel = str(user_id)
-            # Default Status Instrumento: "Em Revisão"
-            status = normalizar_status(buscar_valor('status', inst)) or 'Em Revisão'
+            # Default Status Instrumento: "Em RevisÃƒÂ£o"
+            status = normalizar_status(buscar_valor('status', inst)) or 'Em RevisÃƒÂ£o'
             tipo_familia = buscar_valor('tipo_familia', inst) or buscar_valor('tipo_documento', inst) or 'N/I'
             serie_desenv = buscar_valor('serie_desenv', inst) or buscar_valor('desenho', inst) or 'N/I'
             criticidade = buscar_valor('criticidade', inst) or 'N/I'
-            motivo_calibracao = buscar_valor('motivo_calibracao', inst, 'Calibração Periódica') or 'Calibração Periódica'
+            motivo_calibracao = buscar_valor('motivo_calibracao', inst, 'CalibraÃƒÂ§ÃƒÂ£o PeriÃƒÂ³dica') or 'CalibraÃƒÂ§ÃƒÂ£o PeriÃƒÂ³dica'
             # quantidade = buscar_valor('quantidade', inst, 1)
 
             sql = """
@@ -1558,12 +1715,12 @@ def inserir_banco():
             data_calib = normalizar_data(buscar_valor('data_calibracao', inst))
             data_emissao = normalizar_data(buscar_valor('data_emissao', inst))
             
-            # PRIORIDADE TOTAL para numero_certificado na calibração
+            # PRIORIDADE TOTAL para numero_certificado na calibraÃƒÂ§ÃƒÂ£o
             numero_cert = buscar_valor('numero_certificado', inst) or \
                           buscar_valor('numero_calibracao', inst) or \
                           identificacao
             
-            print(f"[DEBUG] Nova calibração: cert={numero_cert}, inst={identificacao}")
+            print(f"[DEBUG] Nova calibraÃƒÂ§ÃƒÂ£o: cert={numero_cert}, inst={identificacao}")
             laboratorio = buscar_valor('laboratorio', inst) or buscar_valor('laboratorio_responsavel', inst) or 'N/I'
             validade = normalizar_data(buscar_valor('validade', inst) or buscar_valor('data_proxima_calibracao', inst))
 
@@ -1583,7 +1740,7 @@ def inserir_banco():
                     numero_cert, '',
                     laboratorio, motivo_calibracao,
                     data_calib, validade,
-                    'Em Revisão', status
+                    'Em RevisÃƒÂ£o', status
                 )
                 cursor.execute(sql_cal, valores_cal)
                 calibracao_id = cursor.lastrowid
@@ -1593,7 +1750,7 @@ def inserir_banco():
                 try:
                     dados_cal = {
                         'instrumento_id': instrumento_id, 'numero_calibracao': numero_cert,
-                        'status_calibracao': 'Em Revisão', 'user_id': user_id, 'id': calibracao_id
+                        'status_calibracao': 'Em RevisÃƒÂ£o', 'user_id': user_id, 'id': calibracao_id
                     }
                     cursor.execute(sql_audit, (
                         user_id, funcionario_id, 'criado', 'Calibracao', calibracao_id, json.dumps(dados_cal, default=str)
@@ -1638,40 +1795,56 @@ def inserir_banco():
                 'motivo_calibracao': motivo_calibracao
             })
 
-            # ── GRANDEZAS: desativado temporariamente (segunda ordem) ──────────
-            # lista_grandezas = buscar_valor('grandezas', inst) or buscar_valor('tabelas', inst) or []
-            # if not isinstance(lista_grandezas, list):
-            #     lista_grandezas = []
-            # for grandeza in lista_grandezas:
-            #     def get_g(key, default=None):
-            #         val = grandeza.get(key)
-            #         if val is None and isinstance(grandeza, dict):
-            #             for k, v in grandeza.items():
-            #                 if isinstance(v, dict) and key in v:
-            #                     return v[key]
-            #         return val or default
-            #     sql_g = """
-            #         INSERT INTO grandezas (
-            #             instrumento_id, servicos, tolerancia_processo, tolerancia_simetrica,
-            #             unidade, resolucao, criterio_aceitacao, regra_decisao_id,
-            #             faixa_nominal, classe_norma, classificacao, faixa_uso,
-            #             created_at, updated_at
-            #         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-            #     """
-            #     tolerancia  = get_g('tolerancia_processo') or get_g('tolerancia') or get_g('erro_maximo')
-            #     unidade     = get_g('unidade')
-            #     resolucao   = get_g('resolucao')
-            #     faixa_nominal = get_g('faixa_nominal') or get_g('faixa') or get_g('valor_nominal')
-            #     valores_g = (
-            #         instrumento_id,
-            #         json.dumps(get_g('servicos', []) if isinstance(get_g('servicos'), list) else []),
-            #         tolerancia, get_g('tolerancia_simetrica', True), unidade, resolucao,
-            #         get_g('criterio_aceitacao'), get_g('regra_decisao_id', 1),
-            #         faixa_nominal, get_g('classe_norma'), get_g('classificacao'), get_g('faixa_uso')
-            #     )
-            #     cursor.execute(sql_g, valores_g)
-            #     total_grandezas += 1
-            # ────────────────────────────────────────────────────────────────────
+            # Busca grandezas (Simplificado como solicitado)
+            # Tenta pegar direto da chave 'grandezas' ou 'tabelas'
+            lista_grandezas = buscar_valor('grandezas', inst) or buscar_valor('tabelas', inst) or []
+            
+            if not isinstance(lista_grandezas, list):
+                lista_grandezas = []
+
+            for grandeza in lista_grandezas:
+                # Mapeia campos da grandeza 
+                def get_g(key, default=None):
+                    # Tenta direto, depois tenta recursivo se for dict
+                    val = grandeza.get(key)
+                    if val is None and isinstance(grandeza, dict):
+                         # Pequeno helper local para buscar em profundidade rasa
+                         for k, v in grandeza.items():
+                             if isinstance(v, dict) and key in v:
+                                 return v[key]
+                    return val or default
+
+                sql_g = """
+                    INSERT INTO grandezas (
+                        instrumento_id, servicos, tolerancia_processo, tolerancia_simetrica,
+                        unidade, resolucao, criterio_aceitacao, regra_decisao_id,
+                        faixa_nominal, classe_norma, classificacao, faixa_uso,
+                        created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                """
+                
+                tolerancia = get_g('tolerancia_processo') or get_g('tolerancia') or get_g('erro_maximo')
+                unidade = get_g('unidade')
+                resolucao = get_g('resolucao')
+                faixa_nominal = get_g('faixa_nominal') or get_g('faixa') or get_g('valor_nominal')
+
+                
+                valores_g = (
+                    instrumento_id,
+                    json.dumps(get_g('servicos', []) if isinstance(get_g('servicos'), list) else []),
+                    tolerancia,
+                    get_g('tolerancia_simetrica', True),
+                    unidade,
+                    resolucao,
+                    get_g('criterio_aceitacao'),
+                    get_g('regra_decisao_id', 1),
+                    faixa_nominal,
+                    get_g('classe_norma'),
+                    get_g('classificacao'),
+                    get_g('faixa_uso')
+                )
+                cursor.execute(sql_g, valores_g)
+                total_grandezas += 1
 
         conn.commit()
         cursor.close()
@@ -1683,7 +1856,7 @@ def inserir_banco():
 
         msg = f'Inseridos {total_inseridos} instrumento(s)!'
         if total_calibracoes_adicionadas > 0:
-            msg += f' ({total_calibracoes_adicionadas} calibração(ões) adicionada(s) a instrumento(s) existente(s))'
+            msg += f' ({total_calibracoes_adicionadas} calibraÃƒÂ§ÃƒÂ£o(ÃƒÂµes) adicionada(s) a instrumento(s) existente(s))'
         if total_ignorados > 0:
             msg += f' ({total_ignorados} duplicata(s) ignorada(s))'
 
@@ -1862,11 +2035,11 @@ def gerar_sql():
             val_period = escape(inst.get('periodicidade', 12))
             val_dep = escape(inst.get('departamento') or dados_principais.get('cliente'))
             val_resp = escape(inst.get('responsavel') or dados_principais.get('solicitante'))
-            val_status = escape(inst.get('status', 'Sem Calibração'))
+            val_status = escape(inst.get('status', 'Sem CalibraÃƒÂ§ÃƒÂ£o'))
             val_tipo = escape(inst.get('tipo_familia') or inst.get('tipo_documento'))
             val_serie = escape(inst.get('serie_desenv'))
             val_crit = escape(inst.get('criticidade'))
-            val_motivo = escape(inst.get('motivo_calibracao', 'Calibração Periódica'))
+            val_motivo = escape(inst.get('motivo_calibracao', 'CalibraÃƒÂ§ÃƒÂ£o PeriÃƒÂ³dica'))
             val_qtd = escape(inst.get('quantidade', 1))
             val_uid = escape(user_id)
 
