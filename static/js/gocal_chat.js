@@ -398,6 +398,7 @@ function getPdfContentFromParent() {
     });
 }
 
+
 async function sendMessage() {
     const message = chatInput.value.trim();
     // Se tem arquivos, message pode ser vazio (comando implícito)

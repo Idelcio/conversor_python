@@ -572,6 +572,7 @@ body {
     margin-right: 4px;
 }
 
+
 .send-btn {
     width: 36px;
     /* Smaller send button */
@@ -883,8 +884,10 @@ body {
 .table-container table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 11px; /* Fonte compacta para o chat */
-    min-width: 400px; /* Garante que a tabela não esmague os dados */
+    font-size: 11px;
+    /* Fonte compacta para o chat */
+    min-width: 400px;
+    /* Garante que a tabela não esmague os dados */
 }
 
 .table-container th {

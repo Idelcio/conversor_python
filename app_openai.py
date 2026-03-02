@@ -717,6 +717,8 @@ INSTRUCOES:
         return jsonify({'success': False, 'message': f'Erro técnico: {error_msg}'})
 
 
+
+
 def _buscar_instrumentos_texto(user_id, filtros):
     """Consulta o banco e retorna resposta formatada em texto para o chat.
     SEGURANÇA: sempre filtra por user_id — nunca retorna dados de outro usuário."""
