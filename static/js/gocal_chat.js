@@ -472,7 +472,7 @@ async function sendMessage() {
 
             if (data.success) {
                 // Inicia Polling
-                pollProgress(data.task_id);
+                pollProgress(data.task_id, message);
             } else {
                 removeLastMessage();
                 addBotMessage('❌ Erro no envio: ' + data.message);
@@ -547,7 +547,7 @@ async function sendMessage() {
 }
 
 // Função de Polling para verificar progresso
-function pollProgress(taskId) {
+function pollProgress(taskId, originalMessage) {
     const interval = setInterval(async () => {
         try {
             const res = await fetch(`/upload-status/${taskId}`);
@@ -648,6 +648,14 @@ function pollProgress(taskId) {
                         // 2. Editor de Cards
                         const cardsHTML = renderEditableJSON(extractedData);
                         addBotMessage(cardsHTML);
+
+                        // 3. Se o comando era sobre tabelas/grandezas, renderiza direto do extractedData
+                        const tabelaKws = ['tabela', 'tabelas', 'grandeza', 'grandezas', 'resultado', 'resultados'];
+                        const queriaTabela = originalMessage && tabelaKws.some(k => originalMessage.toLowerCase().includes(k));
+                        if (queriaTabela) {
+                            const tabelaHtml = _renderTabelasDeExtracao(extractedData);
+                            if (tabelaHtml) addBotMessage(tabelaHtml);
+                        }
                     }
 
                     // 3. Limpa arquivos da lateral após 4 segundos
@@ -670,6 +678,51 @@ function pollProgress(taskId) {
             clearInterval(interval);
         }
     }, 1000); // Checa a cada 1 segundo
+}
+
+
+// Renderiza tabelas de grandezas/resultados diretamente dos dados extraídos
+function _renderTabelasDeExtracao(dados) {
+    if (!dados || dados.length === 0) return '';
+    let html = '';
+    dados.forEach((inst, i) => {
+        const nome = inst.nome || inst.instrumento || `Instrumento ${i + 1}`;
+        const tag = inst.identificacao || 'S/N';
+        html += `<strong>${i + 1}. ${nome} — ${tag}</strong><br>`;
+
+        // Tenta grandezas (formato padrão)
+        const grandezas = inst.grandezas || [];
+        if (grandezas.length > 0) {
+            html += '<div class="table-container"><table><thead><tr>';
+            html += '<th>Faixa</th><th>Unidade</th><th>Resolução</th><th>Tolerância</th><th>Critério</th>';
+            html += '</tr></thead><tbody>';
+            grandezas.forEach(g => {
+                html += `<tr><td>${g.faixa_nominal || '—'}</td><td>${g.unidade || '—'}</td><td>${g.resolucao || '—'}</td><td>${g.tolerancia_processo || '—'}</td><td>${g.criterio_aceitacao || '—'}</td></tr>`;
+            });
+            html += '</tbody></table></div>';
+            return;
+        }
+
+        // Fallback: procura qualquer campo array-de-objetos no resultado
+        let encontrouTabela = false;
+        for (const [key, val] of Object.entries(inst)) {
+            if (key.startsWith('_') || !Array.isArray(val) || val.length === 0 || typeof val[0] !== 'object') continue;
+            const cols = Object.keys(val[0]);
+            if (cols.length < 2) continue;
+            encontrouTabela = true;
+            html += `<br><strong>${key}</strong><div class="table-container"><table><thead><tr>`;
+            cols.forEach(c => { html += `<th>${c}</th>`; });
+            html += '</tr></thead><tbody>';
+            val.forEach(row => {
+                html += '<tr>';
+                cols.forEach(c => { html += `<td>${row[c] !== undefined ? row[c] : '—'}</td>`; });
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+        }
+        if (!encontrouTabela) html += '<em>Sem tabelas encontradas neste instrumento.</em><br>';
+    });
+    return html || '';
 }
 
 

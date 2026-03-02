@@ -702,6 +702,10 @@ INSTRUCOES:
                         'buscar_laboratorios': {'termo': termo_lab}, # Mantém para cards se o JS quiser
                         'token_usage': extractor.token_usage if extractor else {}
                     })
+                # Caso genérico: IA retornou JSON com message - extrai o texto
+                if 'message' in resp_json:
+                    resposta = resp_json['message']
+
         except:
             pass # Nao e JSON, segue normal
 
