@@ -410,8 +410,15 @@ async function sendMessage() {
 
     addLoadingMessage();
 
+    // Palavras-chave que indicam novo processamento do PDF (força modo async)
+    const comandosExtracao = ['extrair', 'extrai', 'processar', 'analisar', 'analyze', 'resumo', 'resumir'];
+    const isComandoExtracao = !message || comandosExtracao.some(k => message.toLowerCase().includes(k));
+
+    // Se já extraiu dados e a mensagem é conversacional, usa o chat (mais barato e direto)
+    const jaExtraiu = extractedData && extractedData.length > 0;
+
     try {
-        if (uploadedFiles.length > 0 || contextPdfUrl) {
+        if ((uploadedFiles.length > 0 || contextPdfUrl) && (!jaExtraiu || isComandoExtracao)) {
             // MODO ASYNC (Upload com Progresso ou Contexto URL)
 
             // Mostra barras de progresso vazias se tiver arquivo fisico
