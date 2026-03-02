@@ -543,7 +543,11 @@ def chat_mensagem():
     grafico_keywords_v2 = ['grafico', 'grÃƒÂ¡fico', 'chart', 'plot', 'plotar', 'mostrar grafico', 'gerar grafico']
     is_grafico_request = any(kw in message_lower for kw in grafico_keywords_v2)
 
-    dados = extracted_cache.get(session_id, [])
+    tabela_keywords = ['tabela', 'tabelas', 'resultados', 'dados de medição', 'pontos medidos']
+    is_tabela_request = any(kw in message_lower for kw in tabela_keywords)
+
+    # Prioriza dados enviados na requisição, com fallback para o cache da sessão
+    dados = data.get('dados_extraidos') or extracted_cache.get(session_id, [])
 
     # Se usuario pedir explicitamente para ver os dados completos
     if dados and ('mostrar tudo' in message_lower or 'ver dados' in message_lower):
@@ -597,7 +601,7 @@ def chat_mensagem():
 
         if dados:
             # Para grafico, permite contexto maior para PDFs com muitas tabelas.
-            max_doc_context = 60000 if is_grafico_request else 10000
+            max_doc_context = 60000 if (is_grafico_request or is_tabela_request) else 10000
             documento_ctx, was_truncated, original_len = _build_document_context_v2(dados, max_doc_context)
             contexto += documento_ctx
             if was_truncated:
@@ -620,10 +624,10 @@ def chat_mensagem():
         # is_grafico_request ja foi calculado no inicio da rota.
 
         # Se quer grÃƒÂ¡fico mas nÃƒÂ£o tem dados do PDF na sessÃƒÂ£o, responde sem chamar a IA
-        if is_grafico_request and not dados:
+        if (is_grafico_request or is_tabela_request) and not dados:
             return jsonify({
                 'success': True,
-                'message': 'Para gerar o grÃƒÂ¡fico, carregue o **PDF do certificado de calibraÃƒÂ§ÃƒÂ£o** primeiro. Os dados de mediÃƒÂ§ÃƒÂ£o precisam estar disponÃƒÂ­veis na sessÃƒÂ£o. Ã°Å¸â€œâ€ž',
+                'message': 'Para gerar visualizações, carregue o **PDF do certificado de calibração** primeiro. Os dados de medição precisam estar disponíveis na sessão. 📄',
                 'token_usage': extractor.token_usage if extractor else {}
             })
 
@@ -638,7 +642,15 @@ def chat_mensagem():
                     'token_usage': extractor.token_usage if extractor else {}
                 })
 
-        if is_grafico_request:
+        if is_tabela_request and dados:
+            prompt = f"""Voce e o Metron. O usuario quer ver os DADOS DE MEDIÇÃO em formato de TABELA.
+{contexto}
+
+TAREFA UNICA: Analise o JSON no contexto acima, encontre a seção de resultados ou medições e crie uma tabela em formato MARKDOWN contendo os pontos principais (ex: Valor Nominal, Valor Indicado, Erro, Incerteza, etc.).
+A tabela deve ser clara, concisa e bem formatada. Não inclua campos de identificação do instrumento que já são conhecidos, foque nos resultados da calibração.
+Retorne APENAS a tabela em Markdown, sem nenhum outro texto ou explicação.
+"""
+        elif is_grafico_request:
             prompt = f"""Voce e o Metron. O usuario quer um GRAFICO dos dados de calibracao.
 {contexto}
 

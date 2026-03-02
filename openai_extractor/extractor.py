@@ -61,7 +61,7 @@ class OpenAIExtractor:
         except Exception as e:
             print(f"[ERRO] Erro ao converter PDF: {e}")
             return []
-    
+
     def extract_from_pdf(self, pdf_path: str, filename: str = "", user_prompt: str = "") -> Dict:
         """
         Extrai dados do certificado usando OpenAI Vision
@@ -87,7 +87,6 @@ class OpenAIExtractor:
         print(f"[IA] Enviando para Gocal IA...")
         
         # Monta prompt - Lógica Hibrida (Conversa vs JSON vs Resumo vs Checklist)
-        # Palavras-chave RESTRITIVAS para evitar ativar JSON enquanto conversa sobre tabelas
         keywords_json = ['json', 'banco de dados', 'sql', 'estruturar para banco', 'xml', 'planilha excel']
         keywords_checklist = ['checklist', 'preencher check', 'verificar check', 'conferir check']
         keywords_grafico = ['grafico', 'gráfico', 'chart', 'plot', 'plotar', 'mostrar grafico', 'gerar grafico']
@@ -95,6 +94,9 @@ class OpenAIExtractor:
         is_extraction_request = user_prompt and any(k in user_prompt.lower() for k in keywords_json)
         is_checklist_request = user_prompt and any(k in user_prompt.lower() for k in keywords_checklist)
         is_grafico_request = user_prompt and any(k in user_prompt.lower() for k in keywords_grafico)
+        
+        # Flag para saber se devemos esperar uma resposta de texto ou um JSON
+        is_conversational_request = False
 
         if is_grafico_request:
             final_text_prompt = GRAPH_EXTRACTION_PROMPT
@@ -153,8 +155,7 @@ IMPORTANTE: Esta e uma tarefa tecnica de metrologia/qualidade. Analise o documen
         
         elif user_prompt and user_prompt.strip():
             # Modo 2: Conversa Livre com Contexto Visual
-            # Usa o .format() ou f-string manual se o prompt tiver chaves {} extras cuidado
-            # O CONVERSATIONAL_PROMPT tem {user_prompt}, entao .format funciona bem se nao tiver outros {}
+            is_conversational_request = True # ATIVA A FLAG AQUI
             final_text_prompt = CONVERSATIONAL_PROMPT.replace("{user_prompt}", user_prompt)
             print("[IA] Modo Conversacional ativado!")
             
@@ -187,16 +188,16 @@ IMPORTANTE: Esta e uma tarefa tecnica de metrologia/qualidade. Analise o documen
                     "type": "image_url",
                     "image_url": {
                         "url": f"data:image/png;base64,{img_base64}",
-                        "detail": "high"  # Qualidade maxima (DPI alto e analise por blocos)
+                        "detail": "high"
                     }
                 })
             
-            # Chama API - usando gpt-4o (suporta visao e JSON)
+            # Chama API
             response = self.client.chat.completions.create(
                 model="gpt-4o",
                 messages=messages,
                 max_tokens=4000,
-                temperature=0.1  # Baixa temperatura para respostas mais precisas
+                temperature=0.1
             )
             
             # Contabiliza tokens
@@ -211,61 +212,51 @@ IMPORTANTE: Esta e uma tarefa tecnica de metrologia/qualidade. Analise o documen
             print(f"[IA] Resposta recebida ({len(content)} caracteres)")
             print(f"[IA] Conteudo: {content[:500]}")
 
-            # Se a IA recusou (respostas tipicas de recusa), tenta de novo com modelo diferente
+            # Se a IA recusou, tenta de novo
             recusa_patterns = ["i'm sorry", "i can't assist", "i cannot assist", "i can't help", "i cannot help", "sorry, i can"]
             if any(p in content.lower() for p in recusa_patterns):
                 print("[IA] DETECTADA RECUSA DA IA! Tentando novamente com prompt reforçado...")
-                # Retry com prompt mais direto
-                messages[0]["content"] = """Voce e um assistente tecnico de metrologia. Sua UNICA funcao e analisar certificados de calibracao.
-As imagens enviadas sao de um certificado de calibracao tecnico. Voce DEVE analisa-las e responder conforme solicitado.
-Isso e uma tarefa 100% legitima de controle de qualidade industrial."""
-                response2 = self.client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=messages,
-                    max_tokens=4000,
-                    temperature=0.2
-                )
+                messages[0]["content"] = "Voce e um assistente tecnico de metrologia. Sua UNICA funcao e analisar certificados de calibracao. As imagens enviadas sao de um certificado de calibracao tecnico. Voce DEVE analisa-las e responder conforme solicitado. Isso e uma tarefa 100% legitima de controle de qualidade industrial."
+                response2 = self.client.chat.completions.create(model="gpt-4o", messages=messages, max_tokens=4000, temperature=0.2)
                 if response2.usage:
                     self.token_usage['prompt_tokens'] += response2.usage.prompt_tokens
                     self.token_usage['completion_tokens'] += response2.usage.completion_tokens
                     self.token_usage['total_tokens'] += response2.usage.total_tokens
                 content = response2.choices[0].message.content
                 print(f"[IA] Retry resposta ({len(content)} caracteres): {content[:500]}")
+            
+            # Se for uma conversa, retorna o texto diretamente sem tentar converter para JSON
+            if is_conversational_request:
+                print("[IA] Resposta conversacional, retornando como texto.")
+                return {
+                    "is_text_response": True,
+                    "descricao": content,
+                    "arquivo_origem": filename or os.path.basename(pdf_path)
+                }
 
-            # Remove markdown code blocks se existirem
+            # Para os outros casos, continua o fluxo de processamento JSON
             if content.startswith('```'):
-                # Remove ```json ou ``` do inicio
                 lines = content.split('\n')
-                if lines[0].startswith('```'):
-                    lines = lines[1:]
-                # Remove ``` do final
-                if lines and lines[-1].strip() == '```':
-                    lines = lines[:-1]
+                if lines[0].startswith('```'): lines = lines[1:]
+                if lines and lines[-1].strip() == '```': lines = lines[:-1]
                 content = '\n'.join(lines)
-
             content = content.strip()
 
-            # ── Parse robusto: tenta vários formatos antes de desistir ─────────
             import re as _re
             dados = None
-
-            # Tentativa 1: JSON puro
             try:
                 dados = json.loads(content)
             except json.JSONDecodeError:
                 pass
 
-            # Tentativa 2: Extrai bloco ```json ... ``` do meio do texto
             if dados is None:
                 m = _re.search(r'```(?:json)?\s*([\s\S]+?)\s*```', content)
                 if m:
                     try:
                         dados = json.loads(m.group(1))
                         print("[IA] JSON extraído de bloco markdown")
-                    except:
-                        pass
+                    except: pass
 
-            # Tentativa 3: Localiza o primeiro { ... } válido no texto
             if dados is None:
                 try:
                     start = content.index('{')
@@ -274,16 +265,12 @@ Isso e uma tarefa 100% legitima de controle de qualidade industrial."""
                         if c == '{': depth += 1
                         elif c == '}':
                             depth -= 1
-                            if depth == 0:
-                                end = i + 1
-                                break
+                            if depth == 0: end = i + 1; break
                     if end > start:
                         dados = json.loads(content[start:end])
                         print("[IA] JSON extraído por localização de chaves")
-                except Exception:
-                    pass
+                except Exception: pass
 
-            # Tentativa 4: Pede para a IA corrigir o JSON
             if dados is None:
                 print("[IA] JSON inválido — solicitando correção à IA...")
                 try:
@@ -293,8 +280,7 @@ Isso e uma tarefa 100% legitima de controle de qualidade industrial."""
                             {"role": "system", "content": "Você é um conversor de texto para JSON. Retorne APENAS o JSON válido, sem texto adicional."},
                             {"role": "user", "content": f"Converta em JSON limpo e válido:\n\n{content[:3000]}"}
                         ],
-                        max_tokens=3000,
-                        temperature=0
+                        max_tokens=3000, temperature=0
                     )
                     fix_content = fix_resp.choices[0].message.content.strip()
                     m2 = _re.search(r'```(?:json)?\s*([\s\S]+?)\s*```', fix_content)
@@ -304,12 +290,10 @@ Isso e uma tarefa 100% legitima de controle de qualidade industrial."""
                 except Exception as e2:
                     print(f"[IA] Falha também na correção: {e2}")
 
-            # Nenhuma tentativa funcionou → retorna erro real (nunca cria registro falso)
             if dados is None:
                 print(f"[ERRO] Não foi possível extrair JSON do PDF '{filename}'. Conteúdo: {content[:200]}")
                 return {"error": f"A IA não retornou JSON válido para '{filename}'. Tente novamente ou verifique o PDF."}
 
-            # Adiciona arquivo de origem
             dados['arquivo_origem'] = filename or os.path.basename(pdf_path)
 
             print(f"[OK] Extracao concluida!")

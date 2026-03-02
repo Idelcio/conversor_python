@@ -537,7 +537,7 @@ async function sendMessageV2() {
         if (data.listar_laboratorios) {
             await buscarEExibirLaboratoriosV2(data.listar_laboratorios);
         }
-        
+
         // Tratamento de Instrumentos (mantido)
         if (data.listar_instrumentos) {
             await buscarEExibirInstrumentos(data.listar_instrumentos);
@@ -555,7 +555,7 @@ async function buscarEExibirLaboratoriosV2(filtros) {
     try {
         const resp = await fetch(`/buscar-laboratorios-v2?termo=${encodeURIComponent(filtros.termo || '')}`);
         const data = await resp.json();
-        
+
         if (data.success && data.items && data.items.length > 0) {
             let html = `<div style="margin-top:10px; font-size:12px;"><strong>🏢 Laboratórios Encontrados (${data.items.length}):</strong><br>`;
             html += `<table style="width:100%; border-collapse:collapse; margin-top:5px;">`;
@@ -564,7 +564,7 @@ async function buscarEExibirLaboratoriosV2(filtros) {
                         <th style="text-align:left; padding:4px;">Local</th>
                         <th style="text-align:left; padding:4px;">Contato</th>
                     </tr>`;
-            
+
             data.items.forEach(lab => {
                 const local = [lab.cidade, lab.estado].filter(Boolean).join('/');
                 const contato = [lab.telefone, lab.email].filter(Boolean).join('<br>');
@@ -638,7 +638,7 @@ async function sendMessage() {
             }
 
             // Se mensagem e conversacional e PDF ainda nao extraido, usa comando vazio -> EXTRACTION_PROMPT
-            const _cmdsExtracao = ['extrair','extrai','processar','analisar','analyze','resumo','resumir','checklist','preencher','grafico'];
+            const _cmdsExtracao = ['extrair', 'extrai', 'processar', 'analisar', 'analyze', 'resumo', 'resumir', 'checklist', 'preencher', 'grafico'];
             const _isExtCmd = !message || _cmdsExtracao.some(k => message.toLowerCase().includes(k));
             if (message && !_isExtCmd) {
                 _pendingQuery = message; // Guarda pergunta para responder apos extracao
@@ -824,9 +824,7 @@ function pollProgress(taskId, originalMessage) {
                             addBotMessage(text);
                         });
                     } else {
-                        // if (actionBar) actionBar.classList.add('show');
-                        // MODO ESTRUTURADO (Cards JSON)
-                        // 1. Resumo Textual
+                        // MODO ESTRUTURADO (JSON/Tabelas/Graficos)
                         let summary = `✅ **Processamento concluído!** (${statusData.results.length} arquivos)<br><br>`;
                         statusData.results.forEach((inst, i) => {
                             const ident = inst.identificacao || inst.numero_certificado || 'S/N';
@@ -834,27 +832,66 @@ function pollProgress(taskId, originalMessage) {
                         });
                         addBotMessage(summary);
 
-                        // 2. Editor de Cards
-                        const cardsHTML = renderEditableJSON(extractedData);
-                        addBotMessage(cardsHTML);
-
-                        // 3. Responde pergunta pendente usando dados recem extraidos
                         const _queryToAnswer = _pendingQuery || originalMessage;
                         _pendingQuery = null;
-                        if (_queryToAnswer) {
-                            const _tabelaKws = ['tabela','tabelas','grandeza','grandezas','resultado','resultados'];
-                            const _graficoKws = ['grafico','grafico','chart','erro de indicacao','indicacao'];
-                            const _queriaTabela = _tabelaKws.some(k => _queryToAnswer.toLowerCase().includes(k));
-                            const _queriaGrafico = _graficoKws.some(k => _queryToAnswer.toLowerCase().includes(k));
-                            if (_queriaTabela) {
-                                const _tabelaHtml = _renderTabelasDeExtracao(extractedData);
-                                if (_tabelaHtml) addBotMessage(_tabelaHtml);
-                            } else if (_queriaGrafico) {
-                                const _cleanData = extractedData.map(inst => { const ci = {}; for (const [k,v] of Object.entries(inst)) { if (!k.startsWith('_')) ci[k]=v; } return ci; });
-                                fetch('/chat-mensagem',{method:'POST',headers:{'Content-Type':'application/json'},
-                                    body:JSON.stringify({message:_queryToAnswer,user_id:currentUserId||'',dados_extraidos:_cleanData})
-                                }).then(r=>r.json()).then(grd=>{if(grd.grafico)renderGraficoCalib(grd.grafico);else if(grd.message)addBotMessage(grd.message);});
-                            }
+
+                        const _tabelaKws = ['tabela', 'tabelas', 'grandeza', 'grandezas', 'resultado', 'resultados'];
+                        const _graficoKws = ['grafico', 'grafico', 'chart', 'erro de indicacao', 'indicacao'];
+                        const _queriaTabela = _queryToAnswer && _tabelaKws.some(k => _queryToAnswer.toLowerCase().includes(k));
+                        const _queriaGrafico = _queryToAnswer && _graficoKws.some(k => _queryToAnswer.toLowerCase().includes(k));
+
+                                                    if (_queriaTabela) {
+
+                                                        addLoadingMessage();
+
+                                                        const _cleanData = extractedData.map(inst => { const ci = {}; for (const [k, v] of Object.entries(inst)) { if (!k.startsWith('_')) ci[k] = v; } return ci; });
+
+                                                        fetch('/chat-mensagem', {
+
+                                                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+
+                                                            body: JSON.stringify({ message: _queryToAnswer, user_id: currentUserId || '', dados_extraidos: _cleanData })
+
+                                                        }).then(r => r.json()).then(tableData => {
+
+                                                            removeLastMessage();
+
+                                                            if (tableData.success && tableData.message) {
+
+                                                                addBotMessage(tableData.message);
+
+                                                            } else {
+
+                                                                addBotMessage(tableData.message || "Não foi possível gerar a tabela. Exibindo editor de dados.");
+
+                                                                const cardsHTML = renderEditableJSON(extractedData);
+
+                                                                addBotMessage(cardsHTML);
+
+                                                            }
+
+                                                        });
+
+                                                    } else if (_queriaGrafico) {
+                            addLoadingMessage();
+                            const _cleanData = extractedData.map(inst => { const ci = {}; for (const [k, v] of Object.entries(inst)) { if (!k.startsWith('_')) ci[k] = v; } return ci; });
+                            fetch('/chat-mensagem', {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ message: _queryToAnswer, user_id: currentUserId || '', dados_extraidos: _cleanData })
+                            }).then(r => r.json()).then(grd => {
+                                removeLastMessage();
+                                if (grd.grafico) {
+                                    renderGraficoCalib(grd.grafico);
+                                } else {
+                                    addBotMessage(grd.message || "Não foi possível gerar o gráfico. Exibindo dados extraídos.");
+                                    const cardsHTML = renderEditableJSON(extractedData);
+                                    addBotMessage(cardsHTML);
+                                }
+                            });
+                        } else {
+                            // Comportamento padrao: exibe o editor JSON
+                            const cardsHTML = renderEditableJSON(extractedData);
+                            addBotMessage(cardsHTML);
                         }
                     }
 
@@ -1108,8 +1145,8 @@ function markdownToHtml(text) {
         .replace(/>/g, '&gt;');
 
     // 2. Transforma Markdown de Tabelas
-    // Detecta blocos que começam e terminam com |
-    const tableRegex = /((?:\|.*\|(?:\n|$)){2,})/g;
+    // Detecta blocos que possuem colunas separadas por | 
+    const tableRegex = /(?:[^\n]*\|[^\n]*(?:\n|$)){2,}/g;
     html = html.replace(tableRegex, (match) => {
         const lines = match.trim().split('\n');
         if (lines.length < 2) return match;
@@ -1118,7 +1155,7 @@ function markdownToHtml(text) {
         const hasSeparator = lines.some(l => l.includes('|') && l.includes('-'));
         if (!hasSeparator) return match;
 
-        let tableHtml = '<div class="table-container"><table>';
+        let tableHtml = '<div class="table-container" style="overflow-x: auto; margin: 10px 0;"><table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">';
 
         lines.forEach((line, idx) => {
             if (line.includes('|') && line.includes('---')) return; // Pula linha separadora
@@ -1132,7 +1169,9 @@ function markdownToHtml(text) {
             if (cells.length === 0) return;
 
             const tag = idx === 0 ? 'th' : 'td';
-            tableHtml += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+            // Previne bordas se não desejar ou coloca padding inline
+            const style = tag === 'th' ? 'padding: 8px; border-bottom: 2px solid #ddd; background: #f8f9fa;' : 'padding: 8px; border-bottom: 1px solid #ddd;';
+            tableHtml += '<tr style="border-bottom: 1px solid #eee;">' + cells.map(c => `<${tag} style="${style}">${c}</${tag}>`).join('') + '</tr>';
         });
 
         tableHtml += '</table></div>';
