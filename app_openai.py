@@ -846,7 +846,12 @@ INSTRUCOES ESPECIFICAS:
    - "responsavel pelo lab acreditacao 850" -> {{"termo": "850", "tipo": "rbc"}}
    CRITICO: retorne SOMENTE o JSON
 
-3. Para outras perguntas, responda em texto normal.
+3. Se o usuario pedir para NAVEGAR para alguma tela (ex: "ir para instrumentos", "criar instrumento", "abrir dashboard"):
+   Retorne APENAS este JSON:
+   {{"message": "Indo para ...", "navigate_to": "<url>"}}
+   Rotas disponíveis: /instrumentos/create, /instrumentos, /monitoramento, /laboratorios, /profile, /favoritos
+
+4. Para outras perguntas, responda em texto normal.
 """
         
         # Chamada à IA (Reutilizando lógica existente ou adapter)
@@ -904,6 +909,14 @@ INSTRUCOES ESPECIFICAS:
                         'token_usage': extractor.token_usage if extractor else {}
                     })
                 
+                # Navegação
+                if 'navigate_to' in resp_json:
+                    return jsonify({
+                        'success': True,
+                        'message': resp_json.get('message', 'Redirecionando...'),
+                        'redirect_url': resp_json['navigate_to']
+                    })
+
                 # Mantém compatibilidade com instrumentos
                 if 'listar_instrumentos' in resp_json:
                     filtros = resp_json['listar_instrumentos']

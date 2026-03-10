@@ -544,6 +544,13 @@ async function sendMessageV2() {
             await buscarEExibirInstrumentos(data.listar_instrumentos);
         }
 
+        // Navegação
+        if (data.redirect_url) {
+            setTimeout(() => {
+                window.parent.postMessage({ type: 'navigate', url: data.redirect_url }, '*');
+            }, 1000);
+        }
+
     } catch (error) {
         console.error('Erro V2:', error);
         removeLastMessage();
