@@ -45,21 +45,29 @@
         }
 
         #metron-toggle-btn {
-            width: 48px;
-            height: 48px;
-            border-radius: 24px;
+            width: 56px;
+            height: 56px;
+            border-radius: 28px;
             background: linear-gradient(135deg, #00A8E8 0%, #0077B6 100%);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             border: none;
+            padding: 0;
+            overflow: hidden;
         }
 
         #metron-toggle-btn:hover {
-            transform: scale(1.05);
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        #metron-toggle-btn img {
+            width: 75%;
+            height: 75%;
+            object-fit: contain;
         }
 
         #metron-toggle-btn svg {
@@ -106,11 +114,21 @@
         @media (max-width: 480px) {
             #metron-chat-frame {
                 width: 100%;
-                height: 100%;
-                max-height: 100%;
+                height: 85%;
+                max-height: 85vh;
                 bottom: 0;
                 right: 0;
-                border-radius: 0;
+                border-radius: 24px 24px 0 0;
+                box-shadow: 0 -10px 40px rgba(0,0,0,0.2);
+                border: none;
+            }
+            
+            #metron-chat-frame.open {
+                transform: translateY(0);
+            }
+            
+            #metron-chat-frame:not(.open) {
+                transform: translateY(100%);
             }
         }
     `;
@@ -123,10 +141,7 @@
     // Botão Flutuante
     const btn = document.createElement('button');
     btn.id = 'metron-toggle-btn';
-    // Ajusta fonte para o emoji ficar bonito
-    btn.style.fontSize = "24px";
-    btn.style.padding = "0";
-    btn.innerHTML = `🤖`;
+    btn.innerHTML = `<img src="${CHAT_URL}/static/img/metron_face.png" alt="Metron">`;
 
     // Iframe Container
     const frameContainer = document.createElement('div');
@@ -135,18 +150,60 @@
     // Iframe Real (Carregado apenas no primeiro clique para performance)
     let iframeLoaded = false;
 
-    // Ouvir mensagens do Iframe para fechar, navegar ou PEDIR contexto
+    // Funções de Controle
+    function openChat() {
+        if (!iframeLoaded) {
+            const iframe = document.createElement('iframe');
+            iframe.id = 'metron-iframe';
+            iframe.src = FULL_URL;
+            iframe.onload = () => {
+                setTimeout(() => {
+                    scanForPDFs(false);
+                    sendPageContext();
+                }, 1000);
+            };
+            frameContainer.appendChild(iframe);
+            iframeLoaded = true;
+        } else {
+            sendPageContext();
+            scanForPDFs(false);
+        }
+        frameContainer.classList.add('open');
+        btn.style.display = 'none'; // Esconde a bolinha
+    }
+
+    function closeChat() {
+        frameContainer.classList.remove('open');
+        btn.style.display = 'flex'; // Volta a bolinha
+    }
+
+    // Ouvir mensagens do Iframe
     window.addEventListener('message', (e) => {
         if (e.data === 'close-widget') {
-            frameContainer.classList.remove('open');
+            closeChat();
         }
         if (e.data && e.data.type === 'navigate' && e.data.url) {
-            console.log("Metron Navegação:", e.data.url);
             window.location.href = e.data.url;
         }
-        // Novo: Chat pedindo para escanear se tem PDF na tela
         if (e.data === 'request-pdf-url') {
-            scanForPDFs();
+            scanForPDFs(false);
+        }
+        if (e.data === 'request-pdf-content') {
+            scanForPDFs(true);
+        }
+        if (e.data && e.data.type === 'fill_checklist' && e.data.data) {
+            fillChecklistForm(e.data.data);
+        }
+        if (e.data && e.data.type === 'create_calibracao') {
+            criarCalibracaoNoGocal(e.data);
+        }
+    });
+
+    // Fechar ao clicar fora
+    document.addEventListener('mousedown', (e) => {
+        const isClickInside = container.contains(e.target);
+        if (!isClickInside && frameContainer.classList.contains('open')) {
+            closeChat();
         }
     });
 
@@ -242,30 +299,6 @@
         }
     }
 
-    // Ouvintes atualizados
-    window.addEventListener('message', (e) => {
-        if (e.data === 'close-widget') {
-            frameContainer.classList.remove('open');
-        }
-        if (e.data && e.data.type === 'navigate' && e.data.url) {
-            window.location.href = e.data.url;
-        }
-        // Novo: Chat pedindo conteudo ou url
-        if (e.data === 'request-pdf-url') {
-            scanForPDFs(false);
-        }
-        if (e.data === 'request-pdf-content') {
-            scanForPDFs(true);
-        }
-        // Novo: Chat pedindo para preencher checklist
-        if (e.data && e.data.type === 'fill_checklist' && e.data.data) {
-            fillChecklistForm(e.data.data);
-        }
-        // Novo: Chat pedindo para criar calibracao no Gocal
-        if (e.data && e.data.type === 'create_calibracao') {
-            criarCalibracaoNoGocal(e.data);
-        }
-    });
 
     // Funcao auxiliar para preencher o formulario na pagina pai
     function fillChecklistForm(data) {
@@ -434,29 +467,10 @@
 
     btn.onclick = () => {
         const isOpen = frameContainer.classList.contains('open');
-
         if (isOpen) {
-            frameContainer.classList.remove('open');
+            closeChat();
         } else {
-            if (!iframeLoaded) {
-                const iframe = document.createElement('iframe');
-                iframe.id = 'metron-iframe';
-                iframe.src = FULL_URL;
-                iframe.onload = () => {
-                    setTimeout(() => {
-                        scanForPDFs(false);
-                        sendPageContext();
-                    }, 1000);
-                };
-                frameContainer.appendChild(iframe);
-                iframeLoaded = true;
-            } else {
-                // Sempre atualiza o contexto ao reabrir
-                sendPageContext();
-            }
-            frameContainer.classList.add('open');
-            // Se ja estava carregado, escaneia agora
-            if (iframeLoaded) scanForPDFs(false);
+            openChat();
         }
     };
 

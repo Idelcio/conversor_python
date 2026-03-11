@@ -7,12 +7,12 @@ function updateTokenCounter(tokenData) {
     if (!tokenData) return;
     const total = tokenData.total_tokens || 0;
     if (total > sessionTokens) sessionTokens = total;
-    const el = document.getElementById('tokenCounter');
+    const el = document.querySelector('#tokenCounter .status-value');
     if (el) {
         if (sessionTokens >= 1000) {
-            el.textContent = (sessionTokens / 1000).toFixed(1) + 'k tokens';
+            el.textContent = (sessionTokens / 1000).toFixed(1) + 'k';
         } else {
-            el.textContent = sessionTokens + ' tokens';
+            el.textContent = sessionTokens;
         }
     }
 }
@@ -59,16 +59,16 @@ function getPageLabel(path) {
 }
 
 function updatePageIndicator(path) {
-    const indicator = document.getElementById('pageIndicator');
-    if (!indicator) return;
+    const displayEl = document.querySelector('#currentPageDisplay .status-value');
+    if (!displayEl) return;
 
     const label = getPageLabel(path);
     if (label) {
-        indicator.textContent = label;
-        indicator.title = path;
-        indicator.style.display = 'inline-block';
+        displayEl.textContent = label;
+        displayEl.parentElement.title = path;
+        displayEl.parentElement.style.display = 'flex';
     } else {
-        indicator.style.display = 'none';
+        displayEl.parentElement.style.display = 'none';
     }
 }
 
@@ -221,11 +221,22 @@ const savedTheme = localStorage.getItem('theme') || 'light';
 document.body.setAttribute('data-theme', savedTheme);
 themeToggle.textContent = savedTheme === 'light' ? '🌙' : '☀️';
 
-// Auto-resize textarea
+// Auto-resize textarea integrada
 chatInput.addEventListener('input', function () {
     this.style.height = 'auto';
-    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    const minHeight = window.innerWidth <= 768 ? 120 : 90;
+    this.style.height = Math.max(this.scrollHeight, minHeight) + 'px';
 });
+
+// Focar no input ao clicar no container integrado (barra de botões inclusa)
+const inputContainer = document.querySelector('.input-container-integrated');
+if (inputContainer) {
+    inputContainer.addEventListener('click', (e) => {
+        if (!e.target.closest('button')) {
+            chatInput.focus();
+        }
+    });
+}
 
 // Botão de anexar PDFs
 attachBtn.addEventListener('click', () => fileInput.click());
@@ -1216,13 +1227,10 @@ function addLoadingMessage() {
     const div = document.createElement('div');
     div.className = 'message bot';
     div.innerHTML = `
-                <div class="avatar">🤖</div>
                 <div class="message-content">
-                    Processando
-                    <div class="loading-dots">
-                        <span></span>
-                        <span></span>
-                        <span></span>
+                    <div class="loading-gear">
+                        <span class="gear-icon">⚙️</span>
+                        <span>Processando dados...</span>
                     </div>
                 </div>
             `;
@@ -1890,6 +1898,23 @@ function fecharWidget() {
     window.parent.postMessage('close-widget', '*');
 }
 window.fecharWidget = fecharWidget;
+
+// Sidebar Toggle (Removido Hamburguer - Manter apenas se necessário abrir manualmente)
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebar.classList.toggle('open');
+}
+window.toggleSidebar = toggleSidebar;
+
+// Inicializa listeners
+document.addEventListener('DOMContentLoaded', () => {
+    // Escuta cliques no botão de 'plus' se houver e abre a sidebar de arquivos
+    const attachBtn = document.getElementById('attachBtn');
+    if (attachBtn && window.innerWidth <= 768) {
+        // Opcional: abrir sidebar ao clicar no anexo no mobile
+        // attachBtn.addEventListener('click', () => toggleSidebar());
+    }
+});
 
 // Mostrar botao fechar apenas no mobile
 if (window.innerWidth <= 480) {
