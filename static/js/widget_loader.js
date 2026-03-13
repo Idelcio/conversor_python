@@ -81,6 +81,7 @@
             bottom: 150px; /* Acompanha a subida do botão */
             right: 20px;
             width: 600px;
+            max-width: calc(100vw - 40px);
             height: 650px;
             max-height: 75vh;
             background: white;
@@ -112,21 +113,30 @@
 
         /* Mobile */
         @media (max-width: 480px) {
-            #metron-chat-frame {
+            #metron-widget-container {
+                left: 0;
+                right: 0;
+                bottom: 0;
                 width: 100%;
-                height: 85%;
-                max-height: 85vh;
+            }
+
+            #metron-chat-frame {
+                width: 100vw;
+                max-width: 100vw;
+                height: 90dvh;
+                max-height: 90dvh;
                 bottom: 0;
                 right: 0;
+                left: 0;
                 border-radius: 24px 24px 0 0;
                 box-shadow: 0 -10px 40px rgba(0,0,0,0.2);
                 border: none;
             }
-            
+
             #metron-chat-frame.open {
                 transform: translateY(0);
             }
-            
+
             #metron-chat-frame:not(.open) {
                 transform: translateY(100%);
             }
