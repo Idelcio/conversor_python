@@ -878,6 +878,11 @@ body {
 
 /* Responsive */
 @media (max-width: 768px) {
+    /* Impede zoom automático do iOS ao focar em inputs */
+    input, select, textarea {
+        font-size: 16px !important;
+    }
+
     .action-bar {
         flex-direction: column;
         gap: 8px;
@@ -916,12 +921,12 @@ body {
     }
 
     .main-layout {
-        height: calc(85vh - var(--header-height));
+        height: calc(85dvh - var(--header-height));
     }
 
     body {
         margin: 0;
-        height: 100vh;
+        height: 100dvh;
         overflow: hidden;
         border-radius: 20px 20px 0 0;
         box-shadow: 0 -10px 40px rgba(0,0,0,0.15);

@@ -223,9 +223,21 @@ themeToggle.textContent = savedTheme === 'light' ? '🌙' : '☀️';
 
 // Auto-resize textarea integrada
 chatInput.addEventListener('input', function () {
+    if (window.innerWidth <= 768) {
+        this.style.height = '120px'; // Mantém fixo no mobile
+        return;
+    }
     this.style.height = 'auto';
-    const minHeight = window.innerWidth <= 768 ? 120 : 90;
+    const minHeight = 90;
     this.style.height = Math.max(this.scrollHeight, minHeight) + 'px';
+});
+
+// iOS fix: notifica o pai para travar o zoom do viewport quando o teclado abre
+chatInput.addEventListener('focus', () => {
+    window.parent.postMessage({ type: 'input_focus' }, '*');
+});
+chatInput.addEventListener('blur', () => {
+    window.parent.postMessage({ type: 'input_blur' }, '*');
 });
 
 // Focar no input ao clicar no container integrado (barra de botões inclusa)

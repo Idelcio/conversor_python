@@ -107,6 +107,18 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="{{ url_for('static', filename='js/validation_gocal.js') }}?v={{ range(1, 99999) | random }}"></script>
     <script src="{{ url_for('static', filename='js/gocal_chat.js') }}?v={{ range(1, 99999) | random }}"></script>
+    <script>
+        // Fix iOS: evita zoom/reposicionamento quando teclado abre dentro do iframe
+        if (window.visualViewport) {
+            function _fixViewport() {
+                var h = window.visualViewport.height;
+                document.documentElement.style.height = h + 'px';
+                document.body.style.height = h + 'px';
+            }
+            window.visualViewport.addEventListener('resize', _fixViewport);
+            _fixViewport();
+        }
+    </script>
 </body>
 
 </html>

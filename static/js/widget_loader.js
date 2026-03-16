@@ -180,17 +180,67 @@
         }
         frameContainer.classList.add('open');
         btn.style.display = 'none'; // Esconde a bolinha
+
+        // Trava o body da página pai no mobile para evitar scroll/zoom do iOS
+        if (window.innerWidth <= 480) {
+            const scrollY = window.scrollY;
+            document.body.style.overflow = 'hidden';
+            document.body.style.position = 'fixed';
+            document.body.style.width = '100%';
+            document.body.style.top = `-${scrollY}px`;
+        }
+        // Desativa zoom do viewport PAI imediatamente ao abrir (iOS fix)
+        _disableParentZoom();
     }
 
     function closeChat() {
         frameContainer.classList.remove('open');
         btn.style.display = 'flex'; // Volta a bolinha
+
+        // Restaura o body da página pai no mobile
+        if (window.innerWidth <= 480) {
+            const scrollY = parseInt(document.body.style.top || '0') * -1;
+            document.body.style.overflow = '';
+            document.body.style.position = '';
+            document.body.style.width = '';
+            document.body.style.top = '';
+            window.scrollTo(0, scrollY);
+        }
+        // Restaura zoom do viewport PAI ao fechar
+        _restoreParentZoom();
+    }
+
+    // iOS fix: trava o zoom do viewport do pai quando input do iframe recebe foco
+    function _isIOS() {
+        return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    }
+    let _origViewport = null;
+    function _disableParentZoom() {
+        if (!_isIOS()) return;
+        const vp = document.querySelector('meta[name="viewport"]');
+        if (!vp) return;
+        _origViewport = vp.getAttribute('content');
+        const noZoom = _origViewport
+            .replace(/,?\s*maximum-scale=[^,]+/gi, '')
+            .replace(/,?\s*user-scalable=[^,]+/gi, '');
+        vp.setAttribute('content', noZoom + ', maximum-scale=1, user-scalable=no');
+    }
+    function _restoreParentZoom() {
+        if (!_isIOS() || !_origViewport) return;
+        const vp = document.querySelector('meta[name="viewport"]');
+        if (vp) vp.setAttribute('content', _origViewport);
     }
 
     // Ouvir mensagens do Iframe
     window.addEventListener('message', (e) => {
         if (e.data === 'close-widget') {
             closeChat();
+        }
+        if (e.data && e.data.type === 'input_focus') {
+            _disableParentZoom();
+        }
+        if (e.data && e.data.type === 'input_blur') {
+            _restoreParentZoom();
         }
         if (e.data && e.data.type === 'navigate' && e.data.url) {
             window.location.href = e.data.url;
