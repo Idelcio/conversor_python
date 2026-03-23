@@ -10,6 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/metron_face.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/processamento_lote.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/modal_validation.css') }}">
 </head>
@@ -30,14 +31,7 @@
         <div class="header-inner">
             <div class="header-brand">
                 <div class="brand-icon">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                        <path d="M9 2L4 7v13a2 2 0 002 2h12a2 2 0 002-2V7l-5-5H9z" stroke="white" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round" />
-                        <path d="M13 2v5h5" stroke="white" stroke-width="2" stroke-linecap="round"
-                            stroke-linejoin="round" />
-                        <path d="M12 11v6M9 14h6" stroke="white" stroke-width="2" stroke-linecap="round"
-                            stroke-linejoin="round" />
-                    </svg>
+                    <img src="{{ url_for('static', filename='img/metron_face.png') }}" alt="Metron" style="width:32px;height:32px;object-fit:contain;">
                 </div>
                 <div>
                     <h1 class="brand-title">Processamento em Lote</h1>
