@@ -80,21 +80,21 @@ processing_tasks = {} # Cache de tarefas assincronas {task_id: status}
 
 # Mapa de correcao de status (sem acento -> com acento)
 STATUS_MAP = {
-    'sem calibracao': 'Sem CalibraÃƒÂ§ÃƒÂ£o',
-    'sem calibraÃƒÂ§ÃƒÂ£o': 'Sem CalibraÃƒÂ§ÃƒÂ£o',
-    'pendente aprovacao': 'Pendente AprovaÃƒÂ§ÃƒÂ£o',
-    'pendente aprovaÃƒÂ§ÃƒÂ£o': 'Pendente AprovaÃƒÂ§ÃƒÂ£o',
-    'em calibracao': 'Em CalibraÃƒÂ§ÃƒÂ£o',
-    'em calibraÃƒÂ§ÃƒÂ£o': 'Em CalibraÃƒÂ§ÃƒÂ£o',
-    'em manutencao': 'Em ManutenÃƒÂ§ÃƒÂ£o',
-    'em manutenÃƒÂ§ÃƒÂ£o': 'Em ManutenÃƒÂ§ÃƒÂ£o',
+    'sem calibracao': 'Sem Calibração',
+    'sem calibração': 'Sem Calibração',
+    'pendente aprovacao': 'Pendente Aprovação',
+    'pendente aprovação': 'Pendente Aprovação',
+    'em calibracao': 'Em Calibração',
+    'em calibração': 'Em Calibração',
+    'em manutencao': 'Em Manutenção',
+    'em manutenção': 'Em Manutenção',
     'inativo': 'Inativo',
 }
 
 def normalizar_status(status_raw):
     """Normaliza o status para o formato correto com acentos"""
     if not status_raw:
-        return 'Sem CalibraÃƒÂ§ÃƒÂ£o'
+        return 'Sem Calibração'
     chave = status_raw.strip().lower()
     return STATUS_MAP.get(chave, status_raw)
 
@@ -159,7 +159,7 @@ def _extract_chart_points_from_data_v2(data):
         'erro', 'desvio', 'y'
     ]
     ie_hints = [
-        'ie', 'tolerancia', 'tolerÃƒÂ¢ncia', 'erro_maximo_permitido',
+        'ie', 'tolerancia', 'tolerância', 'erro_maximo_permitido',
         'erro maximo permitido', 'limite'
     ]
     unit_hints = ['unidade', 'unit']
@@ -219,7 +219,7 @@ def _build_document_context_v2(dados, max_chars):
         json_str = json_str[:max_chars] + "... (troncado)"
         truncated = True
 
-    return f"\n\nDADOS DO DOCUMENTO (PDF atual em sessÃƒÂ£o):\n{json_str}", truncated, original_len
+    return f"\n\nDADOS DO DOCUMENTO (PDF atual em sessão):\n{json_str}", truncated, original_len
 
 def _is_truthy_filter_v2(value):
     """Normaliza flags de filtro vindas do frontend/IA."""
@@ -360,20 +360,65 @@ def processamento_lote():
     """Pagina de processamento em lote de PDFs"""
     user_id = request.args.get('user_id') or session.get('gocal_user_id', '')
     funcionario_id = request.args.get('funcionario_id') or session.get('gocal_funcionario_id', '')
-    user_name = ''
-    if user_id:
-        try:
-            conn = mysql.connector.connect(**DB_CONFIG)
-            cursor = conn.cursor()
+    funcionario_name = ''
+    company_name = ''
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+        if funcionario_id:
+            cursor.execute("SELECT name FROM funcionarios WHERE id = %s LIMIT 1", (funcionario_id,))
+            row = cursor.fetchone()
+            if row:
+                funcionario_name = row[0]
+        if not funcionario_name and user_id:
+            # Fallback: usuário logado diretamente como empresa
             cursor.execute("SELECT name FROM users WHERE id = %s LIMIT 1", (user_id,))
             row = cursor.fetchone()
             if row:
+                funcionario_name = row[0] or ''
+        if user_id:
+            cursor.execute("SELECT nome_fantasia FROM users WHERE id = %s LIMIT 1", (user_id,))
+            row = cursor.fetchone()
+            if row:
+                company_name = row[0] or ''
+        cursor.close()
+        conn.close()
+    except Exception:
+        pass
+    return render_template('processamento_lote.html', user_id=user_id, funcionario_id=funcionario_id,
+                           funcionario_name=funcionario_name, company_name=company_name)
+
+
+@app.route('/api/user-context')
+def api_user_context():
+    """Retorna nome do funcionário logado e nome da empresa para preencher campos do formulário"""
+    user_id = request.args.get('user_id') or session.get('gocal_user_id', '')
+    funcionario_id = request.args.get('funcionario_id') or session.get('gocal_funcionario_id', '')
+    user_name = ''
+    company_name = ''
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+        if funcionario_id:
+            cursor.execute("SELECT name FROM funcionarios WHERE id = %s LIMIT 1", (funcionario_id,))
+            row = cursor.fetchone()
+            if row:
                 user_name = row[0]
-            cursor.close()
-            conn.close()
-        except Exception:
-            pass
-    return render_template('processamento_lote.html', user_id=user_id, funcionario_id=funcionario_id, user_name=user_name)
+        if not user_name and user_id:
+            cursor.execute("SELECT name FROM users WHERE id = %s LIMIT 1", (user_id,))
+            row = cursor.fetchone()
+            if row:
+                user_name = row[0] or ''
+        if user_id:
+            cursor.execute("SELECT nome_fantasia FROM users WHERE id = %s LIMIT 1", (user_id,))
+            row = cursor.fetchone()
+            if row:
+                company_name = row[0] or ''
+        cursor.close()
+        conn.close()
+    except Exception:
+        pass
+    return jsonify({'user_name': user_name, 'company_name': company_name})
 
 
 # ============================================================
@@ -458,7 +503,7 @@ def chat_extrair():
             # Adiciona aviso de erro se houve falhas
             falhas = len(files) - len(instrumentos)
             if falhas > 0:
-                resumo_msg += f"\nÃ¢Å¡Â Ã¯Â¸Â {falhas} arquivo(s) nÃƒÂ£o foram processados (erro ou seguranÃƒÂ§a)."
+                resumo_msg += f"\nÃ¢Å¡Â Ã¯Â¸Â {falhas} arquivo(s) não foram processados (erro ou segurança)."
 
             return jsonify({
                 'success': True,
@@ -498,7 +543,7 @@ PERGUNTA: "{message}"
 
 Responda de forma direta e util."""
 
-            # LÃƒÂ³gica Hibrida (Gemini ou OpenAI)
+            # Lógica Hibrida (Gemini ou OpenAI)
             if hasattr(extractor, 'ask'):
                 resposta = extractor.ask(prompt)
             else:
@@ -540,7 +585,7 @@ def chat_mensagem():
     print(f"[CHAT-MSG] Session: {session_id[:8]}... Msg: {message} | user_id={req_user_id}")
 
     message_lower = message.lower()
-    grafico_keywords_v2 = ['grafico', 'grÃƒÂ¡fico', 'chart', 'plot', 'plotar', 'mostrar grafico', 'gerar grafico']
+    grafico_keywords_v2 = ['grafico', 'gráfico', 'chart', 'plot', 'plotar', 'mostrar grafico', 'gerar grafico']
     is_grafico_request = any(kw in message_lower for kw in grafico_keywords_v2)
 
     tabela_keywords = ['tabela', 'tabelas', 'resultados', 'dados de medição', 'pontos medidos']
@@ -553,7 +598,7 @@ def chat_mensagem():
     if dados and ('mostrar tudo' in message_lower or 'ver dados' in message_lower):
         return jsonify({
             'success': True,
-            'message': 'Aqui estÃƒÂ£o os dados extraÃƒÂ­dos:',
+            'message': 'Aqui estão os dados extraídos:',
             'instrumentos': dados
         })
         
@@ -561,7 +606,7 @@ def chat_mensagem():
     if 'limpar' in message_lower or 'nova sessao' in message_lower or 'novo arquivo' in message_lower:
         if session_id in extracted_cache:
             del extracted_cache[session_id]
-        return jsonify({'success': True, 'message': 'SessÃƒÂ£o limpa! Pode enviar um novo arquivo.'})
+        return jsonify({'success': True, 'message': 'Sessão limpa! Pode enviar um novo arquivo.'})
 
     # Chat normal com GPT-4o
     try:
@@ -623,7 +668,7 @@ def chat_mensagem():
 
         # is_grafico_request ja foi calculado no inicio da rota.
 
-        # Se quer grÃƒÂ¡fico mas nÃƒÂ£o tem dados do PDF na sessÃƒÂ£o, responde sem chamar a IA
+        # Se quer gráfico mas não tem dados do PDF na sessão, responde sem chamar a IA
         if (is_grafico_request or is_tabela_request) and not dados:
             return jsonify({
                 'success': True,
@@ -656,11 +701,11 @@ Retorne APENAS a tabela em Markdown, sem nenhum outro texto ou explicação.
 
 TAREFA UNICA: Extraia os pontos de calibracao (valor nominal e erro de indicacao) do contexto acima e retorne SOMENTE este JSON, sem nenhum texto antes ou depois:
 
-{{"message": "Aqui estÃƒÂ¡ o grÃƒÂ¡fico!", "mostrar_grafico": {{"titulo": "Erro de IndicaÃƒÂ§ÃƒÂ£o", "x_label": "Valor Nominal (mm)", "y_label": "Erro (mm)", "pontos": [{{"x": 0.0, "y": 0.000, "ie": 0.007}}, {{"x": 75.31, "y": 0.005, "ie": 0.007}}]}}}}
+{{"message": "Aqui está o gráfico!", "mostrar_grafico": {{"titulo": "Erro de Indicação", "x_label": "Valor Nominal (mm)", "y_label": "Erro (mm)", "pontos": [{{"x": 0.0, "y": 0.000, "ie": 0.007}}, {{"x": 75.31, "y": 0.005, "ie": 0.007}}]}}}}
 
 REGRAS:
 - "pontos": lista com todos os pares (x=nominal, y=erro_de_indicacao) da tabela de resultados
-- "ie": valor do Ã‚Â±IE ou tolerÃƒÂ¢ncia mÃƒÂ¡xima (use 0 se nao encontrar)
+- "ie": valor do Ã‚Â±IE ou tolerância máxima (use 0 se nao encontrar)
 - "x_label" e "y_label": use a unidade correta do instrumento
 - Retorne SOMENTE o JSON. Zero texto adicional.
 """
@@ -677,7 +722,7 @@ ROTAS DA APLICACAO (Use se o usuario pedir para ir):
 USUARIO: "{message}"
 
 INSTRUCOES:
-0. BLOQUEIO DE NAVEGACAO: Se o usuario pedir para ir, abrir, acessar ou navegar para a pagina de calibracoes OU movimentos, NAO execute a navegacao. Responda APENAS em texto, de forma sutil e amigavel, algo como: "Essa navegaÃƒÂ§ÃƒÂ£o ainda nÃƒÂ£o estÃƒÂ¡ disponÃƒÂ­vel pelo chat, mas vocÃƒÂª pode acessar pelo menu do sistema normalmente. Ã°Å¸ËœÅ " Ã¢â‚¬â€ sem JSON, sem navigate_to.
+0. BLOQUEIO DE NAVEGACAO: Se o usuario pedir para ir, abrir, acessar ou navegar para a pagina de calibracoes OU movimentos, NAO execute a navegacao. Responda APENAS em texto, de forma sutil e amigavel, algo como: "Essa navegação ainda não está disponível pelo chat, mas você pode acessar pelo menu do sistema normalmente. Ã°Å¸ËœÅ " Ã¢â‚¬â€ sem JSON, sem navigate_to.
 
 1. Se o usuario pedir para NAVEGAR para alguma tela (ex: "ir para instrumentos"), retorne APENAS este JSON:
    {{"message": "Indo para instrumentos...", "navigate_to": "/instrumentos"}}
@@ -685,7 +730,7 @@ INSTRUCOES:
 2. Se o usuario fizer QUALQUER pergunta sobre instrumentos cadastrados Ã¢â‚¬â€ seja para listar, ver, contar, filtrar por tipo, status, vencimento, etc. (ex: "quantos micrometros temos?", "mostre os paquimetros", "quais estao em revisao", "instrumentos vencidos", "ver calibracoes a vencer") Ã¢â‚¬â€ retorne APENAS este JSON puro, sem nenhum texto antes ou depois:
    {{"message": "Buscando instrumentos...", "listar_instrumentos": {{"termo": "micrometro", "status": "", "filtro_vencidos": false, "filtro_a_vencer": false}}}}
    - Use "termo" para filtrar por tipo/nome (ex: "micrometro", "paquimetro", "termometro"). Deixe vazio para todos.
-   - Use "status" EXATAMENTE um destes valores (com acento correto): "Aprovado", "Reprovado", "Inativo", "Em CalibraÃƒÂ§ÃƒÂ£o", "Em ManutenÃƒÂ§ÃƒÂ£o", "Em RevisÃƒÂ£o", "Sem CalibraÃƒÂ§ÃƒÂ£o", "Pendente AprovaÃƒÂ§ÃƒÂ£o". Deixe vazio para todos os status.
+   - Use "status" EXATAMENTE um destes valores (com acento correto): "Aprovado", "Reprovado", "Inativo", "Em Calibração", "Em Manutenção", "Em Revisão", "Sem Calibração", "Pendente Aprovação". Deixe vazio para todos os status.
    - Use "filtro_vencidos": true para instrumentos com calibracao vencida
    - Use "filtro_a_vencer": true para instrumentos que vencem nos proximos 30 dias
    - Campos adicionais opcionais para busca avancada: "identificacao", "instrumento", "responsavel", "departamento", "data_inicio", "data_fim".
@@ -725,7 +770,7 @@ INSTRUCOES:
             # Limpa backticks se a IA colocou ```json ... ```
             clean_resp = resposta.replace('```json', '').replace('```', '').strip()
 
-            # Extrai JSON mesmo se vier com texto antes (ex: "Aqui estÃƒÂ¡: {...}")
+            # Extrai JSON mesmo se vier com texto antes (ex: "Aqui está: {...}")
             json_match = re.search(r'\{.*\}', clean_resp, re.DOTALL)
             if json_match:
                 clean_resp = json_match.group(0)
@@ -734,7 +779,7 @@ INSTRUCOES:
             if clean_resp.startswith('{'):
                 resp_json = json.loads(clean_resp)
                 
-                # Caso 1: NavegaÃƒÂ§ÃƒÂ£o
+                # Caso 1: Navegação
                 if 'navigate_to' in resp_json:
                     return jsonify({
                         'success': True, 
@@ -742,7 +787,7 @@ INSTRUCOES:
                         'redirect_url': resp_json['navigate_to']
                     })
                 
-                # Caso 2: Checklist AutomÃƒÂ¡tico
+                # Caso 2: Checklist Automático
                 if 'checklist_data' in resp_json:
                      return jsonify({
                         'success': True,
@@ -750,11 +795,11 @@ INSTRUCOES:
                         'auto_checklist': resp_json['checklist_data']
                     })
 
-                # Caso 3: GrÃƒÂ¡fico de CalibraÃƒÂ§ÃƒÂ£o
+                # Caso 3: Gráfico de Calibração
                 if 'mostrar_grafico' in resp_json:
                     return jsonify({
                         'success': True,
-                        'message': resp_json.get('message', 'Gerando grÃƒÂ¡fico...'),
+                        'message': resp_json.get('message', 'Gerando gráfico...'),
                         'grafico': resp_json['mostrar_grafico'],
                         'token_usage': extractor.token_usage if extractor else {}
                     })
@@ -762,7 +807,7 @@ INSTRUCOES:
                 # Caso 4: Listar/Filtrar Instrumentos
                 if 'listar_instrumentos' in resp_json:
                     filtros = resp_json['listar_instrumentos']
-                    # SEGURANÃƒâ€¡A: usa apenas o user_id da requisiÃƒÂ§ÃƒÂ£o autenticada
+                    # SEGURANÃƒâ€¡A: usa apenas o user_id da requisição autenticada
                     uid = req_user_id or session.get('gocal_user_id') or ''
                     texto_resultado = _buscar_instrumentos_texto(uid, filtros)
                     return jsonify({
@@ -779,10 +824,10 @@ INSTRUCOES:
     except Exception as e:
         error_msg = str(e)
         if "429" in error_msg:
-             return jsonify({'success': True, 'message': 'Ã¢ÂÂ³ **Muitas requisiÃƒÂ§ÃƒÂµes.** Estamos operando no limite da IA. Aguarde alguns segundos e tente de novo.'})
+             return jsonify({'success': True, 'message': 'Ã¢ÂÂ³ **Muitas requisições.** Estamos operando no limite da IA. Aguarde alguns segundos e tente de novo.'})
 
         print(f"[ERRO] Chat Msg: {e}")
-        return jsonify({'success': False, 'message': f'Erro tÃƒÂ©cnico: {error_msg}'})
+        return jsonify({'success': False, 'message': f'Erro técnico: {error_msg}'})
 
 
 @app.route('/chat-mensagem-v2', methods=['POST'])
@@ -1210,9 +1255,9 @@ def buscar_laboratorios_v2():
 
 def _buscar_instrumentos_texto(user_id, filtros):
     """Consulta o banco e retorna resposta formatada em texto para o chat.
-    SEGURANÃƒâ€¡A: sempre filtra por user_id Ã¢â‚¬â€ nunca retorna dados de outro usuÃƒÂ¡rio."""
+    SEGURANÃƒâ€¡A: sempre filtra por user_id Ã¢â‚¬â€ nunca retorna dados de outro usuário."""
     if not user_id:
-        return "NÃƒÂ£o foi possÃƒÂ­vel identificar o usuÃƒÂ¡rio. FaÃƒÂ§a login novamente."
+        return "Não foi possível identificar o usuário. Faça login novamente."
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor(dictionary=True)
@@ -1256,7 +1301,7 @@ def buscar_instrumentos():
     """Busca instrumentos com filtros para o chat"""
     user_id = request.args.get('user_id') or session.get('gocal_user_id')
     if not user_id:
-        return jsonify({'success': False, 'items': [], 'message': 'UsuÃƒÂ¡rio nÃƒÂ£o identificado.'})
+        return jsonify({'success': False, 'items': [], 'message': 'Usuário não identificado.'})
 
     filtros = {
         'termo': request.args.get('termo', '').strip(),
@@ -1431,7 +1476,7 @@ def upload_async():
                  # Paralelismo
                  with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                      # Usa as_completed para atualizar contador realtime? 
-                     # Ou map simples. Map ÃƒÂ© mais facil de coletar ordem, mas as_completed ÃƒÂ© melhor pra progresso.
+                     # Ou map simples. Map é mais facil de coletar ordem, mas as_completed é melhor pra progresso.
                      future_to_file = {executor.submit(process_one, f): f[1] for f in files_info}
                      
                      for future in concurrent.futures.as_completed(future_to_file):
@@ -1452,7 +1497,7 @@ def upload_async():
                  print(f"[TASK-ERR] {e}")
                  processing_tasks[tid]['status'] = 'error'
 
-        # LanÃƒÂ§a thread solta
+        # Lança thread solta
         threading.Thread(target=run_job, args=(task_id, temp_files_info, session_id, comando)).start()
         
         return jsonify({'success': True, 'task_id': task_id})
@@ -1488,10 +1533,10 @@ def check_status(task_id):
 # ============================================================
 # ROTAS - BANCO DE DADOS (MySQL)
 # ============================================================
-# NormalizaÃƒÂ§ÃƒÂ£o de Status para o padrÃƒÂ£o do Gocal
+# Normalização de Status para o padrão do Gocal
 def normalizar_status(valor):
     if not valor:
-        return 'Em RevisÃƒÂ£o'
+        return 'Em Revisão'
     
 def normalizar_data(data_str):
     """Converte DD/MM/YYYY ou similar para YYYY-MM-DD"""
@@ -1593,7 +1638,7 @@ def inserir_banco():
                             buscar_valor('patrimonio', inst) or \
                             buscar_valor('numero_certificado', inst) or 'n/i'
 
-            # Verifica se instrumento jÃƒÂ¡ existe
+            # Verifica se instrumento já existe
             cursor.execute(
                 "SELECT id FROM instrumentos WHERE identificacao = %s AND user_id = %s LIMIT 1",
                 (identificacao, user_id)
@@ -1601,21 +1646,21 @@ def inserir_banco():
             existente = cursor.fetchone()
             if existente:
                 instrumento_id_existente = existente[0]
-                # Extrai dados da calibraÃƒÂ§ÃƒÂ£o do PDF
+                # Extrai dados da calibração do PDF
                 data_calib_dup = buscar_valor('data_calibracao', inst)
                 # PRIORIDADE TOTAL para numero_certificado
                 numero_cert_dup = buscar_valor('numero_certificado', inst) or \
                                   buscar_valor('numero_calibracao', inst) or \
                                   identificacao
                 
-                print(f"[DEBUG] Extraido para calibraÃƒÂ§ÃƒÂ£o: cert={numero_cert_dup}, tag={identificacao}")
+                print(f"[DEBUG] Extraido para calibração: cert={numero_cert_dup}, tag={identificacao}")
 
                 laboratorio_dup = buscar_valor('laboratorio', inst) or buscar_valor('laboratorio_responsavel', inst) or 'N/I'
                 validade_dup = buscar_valor('validade', inst) or buscar_valor('data_proxima_calibracao', inst)
-                motivo_dup = buscar_valor('motivo_calibracao', inst, 'CalibraÃƒÂ§ÃƒÂ£o PeriÃƒÂ³dica') or 'CalibraÃƒÂ§ÃƒÂ£o PeriÃƒÂ³dica'
-                status_dup = normalizar_status(buscar_valor('status', inst)) or 'Em RevisÃƒÂ£o'
+                motivo_dup = buscar_valor('motivo_calibracao', inst, 'Calibração Periódica') or 'Calibração Periódica'
+                status_dup = normalizar_status(buscar_valor('status', inst)) or 'Em Revisão'
 
-                # Verifica se jÃƒÂ¡ existe calibraÃƒÂ§ÃƒÂ£o com mesmo nÃƒÂºmero de certificado E mesma data
+                # Verifica se já existe calibração com mesmo número de certificado E mesma data
                 print(f"[DEBUG] Instrumento existente id={instrumento_id_existente}, numero_cert='{numero_cert_dup}', data_calib='{data_calib_dup}'")
                 cursor.execute(
                     "SELECT id FROM calibracoes WHERE instrumento_id = %s AND numero_calibracao = %s AND data_calibracao = %s LIMIT 1",
@@ -1627,7 +1672,7 @@ def inserir_banco():
                     total_ignorados += 1
                     continue
 
-                # Instrumento existe mas calibraÃƒÂ§ÃƒÂ£o ÃƒÂ© nova Ã¢â‚¬â€ insere sÃƒÂ³ a calibraÃƒÂ§ÃƒÂ£o
+                # Instrumento existe mas calibração é nova Ã¢â‚¬â€ insere só a calibração
                 try:
                     sql_cal_dup = """
                         INSERT INTO calibracoes (
@@ -1644,7 +1689,7 @@ def inserir_banco():
                         numero_cert_dup, '',
                         laboratorio_dup, motivo_dup,
                         normalizar_data(data_calib_dup), normalizar_data(validade_dup),
-                        'Em RevisÃƒÂ£o', status_dup
+                        'Em Revisão', status_dup
                     ))
                     calibracao_id_dup = cursor.lastrowid
                     print(f"[DB] Calibracao #{calibracao_id_dup} adicionada ao instrumento existente #{instrumento_id_existente}")
@@ -1688,14 +1733,14 @@ def inserir_banco():
             numero_serie = buscar_valor('numero_serie', inst) or buscar_valor('serie', inst) or 'N/I'
             descricao = buscar_valor('descricao', inst) or json.dumps(inst, ensure_ascii=False)[:500]
             periodicidade = buscar_valor('periodicidade', inst, 12)
-            departamento = ""
-            responsavel = str(user_id)
-            # Default Status Instrumento: "Em RevisÃƒÂ£o"
-            status = normalizar_status(buscar_valor('status', inst)) or 'Em RevisÃƒÂ£o'
+            departamento = buscar_valor('departamento', inst) or ''
+            responsavel = buscar_valor('responsavel', inst) or ''
+            # Default Status Instrumento: "Em Revisão"
+            status = normalizar_status(buscar_valor('status', inst)) or 'Em Revisão'
             tipo_familia = buscar_valor('tipo_familia', inst) or buscar_valor('tipo_documento', inst) or 'N/I'
             serie_desenv = buscar_valor('serie_desenv', inst) or buscar_valor('desenho', inst) or 'N/I'
             criticidade = buscar_valor('criticidade', inst) or 'N/I'
-            motivo_calibracao = buscar_valor('motivo_calibracao', inst, 'CalibraÃƒÂ§ÃƒÂ£o PeriÃƒÂ³dica') or 'CalibraÃƒÂ§ÃƒÂ£o PeriÃƒÂ³dica'
+            motivo_calibracao = buscar_valor('motivo_calibracao', inst, 'Calibração Periódica') or 'Calibração Periódica'
             # quantidade = buscar_valor('quantidade', inst, 1)
 
             sql = """
@@ -1740,12 +1785,12 @@ def inserir_banco():
             data_calib = normalizar_data(buscar_valor('data_calibracao', inst))
             data_emissao = normalizar_data(buscar_valor('data_emissao', inst))
             
-            # PRIORIDADE TOTAL para numero_certificado na calibraÃƒÂ§ÃƒÂ£o
+            # PRIORIDADE TOTAL para numero_certificado na calibração
             numero_cert = buscar_valor('numero_certificado', inst) or \
                           buscar_valor('numero_calibracao', inst) or \
                           identificacao
             
-            print(f"[DEBUG] Nova calibraÃƒÂ§ÃƒÂ£o: cert={numero_cert}, inst={identificacao}")
+            print(f"[DEBUG] Nova calibração: cert={numero_cert}, inst={identificacao}")
             laboratorio = buscar_valor('laboratorio', inst) or buscar_valor('laboratorio_responsavel', inst) or 'N/I'
             validade = normalizar_data(buscar_valor('validade', inst) or buscar_valor('data_proxima_calibracao', inst))
 
@@ -1765,7 +1810,7 @@ def inserir_banco():
                     numero_cert, '',
                     laboratorio, motivo_calibracao,
                     data_calib, validade,
-                    'Em RevisÃƒÂ£o', status
+                    'Em Revisão', status
                 )
                 cursor.execute(sql_cal, valores_cal)
                 calibracao_id = cursor.lastrowid
@@ -1775,7 +1820,7 @@ def inserir_banco():
                 try:
                     dados_cal = {
                         'instrumento_id': instrumento_id, 'numero_calibracao': numero_cert,
-                        'status_calibracao': 'Em RevisÃƒÂ£o', 'user_id': user_id, 'id': calibracao_id
+                        'status_calibracao': 'Em Revisão', 'user_id': user_id, 'id': calibracao_id
                     }
                     cursor.execute(sql_audit, (
                         user_id, funcionario_id, 'criado', 'Calibracao', calibracao_id, json.dumps(dados_cal, default=str)
@@ -1881,7 +1926,7 @@ def inserir_banco():
 
         msg = f'Inseridos {total_inseridos} instrumento(s)!'
         if total_calibracoes_adicionadas > 0:
-            msg += f' ({total_calibracoes_adicionadas} calibraÃƒÂ§ÃƒÂ£o(ÃƒÂµes) adicionada(s) a instrumento(s) existente(s))'
+            msg += f' ({total_calibracoes_adicionadas} calibração(ões) adicionada(s) a instrumento(s) existente(s))'
         if total_ignorados > 0:
             msg += f' ({total_ignorados} duplicata(s) ignorada(s))'
 
@@ -2060,11 +2105,11 @@ def gerar_sql():
             val_period = escape(inst.get('periodicidade', 12))
             val_dep = escape(inst.get('departamento') or dados_principais.get('cliente'))
             val_resp = escape(inst.get('responsavel') or dados_principais.get('solicitante'))
-            val_status = escape(inst.get('status', 'Sem CalibraÃƒÂ§ÃƒÂ£o'))
+            val_status = escape(inst.get('status', 'Sem Calibração'))
             val_tipo = escape(inst.get('tipo_familia') or inst.get('tipo_documento'))
             val_serie = escape(inst.get('serie_desenv'))
             val_crit = escape(inst.get('criticidade'))
-            val_motivo = escape(inst.get('motivo_calibracao', 'CalibraÃƒÂ§ÃƒÂ£o PeriÃƒÂ³dica'))
+            val_motivo = escape(inst.get('motivo_calibracao', 'Calibração Periódica'))
             val_qtd = escape(inst.get('quantidade', 1))
             val_uid = escape(user_id)
 

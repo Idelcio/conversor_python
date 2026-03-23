@@ -523,6 +523,7 @@
             title: document.title,
             chat_url: CHAT_URL
         }, '*');
+
     }
 
     btn.onclick = () => {

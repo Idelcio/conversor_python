@@ -16,8 +16,11 @@
 
 <body>
     <!-- Hidden fields -->
-    <!-- Hidden fields -->
     <input type="hidden" id="userId" value="{{ user_id or '' }}">
+    <script>
+        window.__metronUserName = {{ funcionario_name | tojson }};
+        window.__metronCompanyName = {{ company_name | tojson }};
+    </script>
     <input type="hidden" id="funcionarioId" value="{{ funcionario_id or '' }}">
 
     <!-- ============================================ -->

@@ -59,7 +59,8 @@ body {
     background: var(--bg-primary);
     border-bottom: 1px solid var(--border-color);
     padding: 16px 24px;
-    height: 110px; /* Aumentado para caber a nova face e status */
+    height: 110px;
+    /* Aumentado para caber a nova face e status */
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -77,11 +78,9 @@ body {
 }
 
 .logo {
-    width: 60px; /* Maior para a nova face */
-    height: 60px;
-    background: url('/static/img/metron_face.png') center/cover no-repeat;
-    border-radius: 14px;
-    box-shadow: var(--shadow-md);
+    width: 61px;
+    height: 61px;
+    background: url('/static/img/metron_face.png') center/contain no-repeat;
     flex-shrink: 0;
 }
 
@@ -385,14 +384,17 @@ body {
 }
 
 .avatar {
-    display: none !important; /* Esconde os bonecos conforme solicitado */
+    display: none !important;
+    /* Esconde os bonecos conforme solicitado */
 }
 
 .message-content {
     max-width: 85%;
-    background: transparent; /* Bot fica limpo */
+    background: transparent;
+    /* Bot fica limpo */
     border-radius: 12px;
-    padding: 8px 0; /* Mais limpo para o bot */
+    padding: 8px 0;
+    /* Mais limpo para o bot */
     line-height: 1.6;
     font-size: 15px;
     color: var(--text-primary);
@@ -404,12 +406,13 @@ body {
 }
 
 .message.user .message-content {
-    background: #f0f0f0; /* UsuÃ¡rio com tom de cinza */
+    background: #f0f0f0;
+    /* UsuÃ¡rio com tom de cinza */
     color: #333;
     border: none;
     border-radius: 18px;
     padding: 12px 20px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 [data-theme="dark"] .message.user .message-content {
@@ -561,8 +564,10 @@ body {
     flex-direction: column;
     overflow: hidden;
     transition: all 0.3s ease;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-    cursor: text; /* Indica que toda a Ã¡rea Ã© clicÃ¡vel para texto */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    cursor: text;
+    /* Indica que toda a área é clicável para texto */
+    margin: 0 10px;
 }
 
 [data-theme="dark"] .input-container-integrated {
@@ -580,7 +585,8 @@ body {
     border: none !important;
     background: transparent !important;
     padding: 16px 20px 8px;
-    font-size: 16px; /* >= 16px evita auto-zoom no iOS */
+    font-size: 16px;
+    /* >= 16px evita auto-zoom no iOS */
     line-height: 1.5;
     outline: none;
     resize: none;
@@ -595,7 +601,8 @@ body {
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px 12px;
-    cursor: text; /* Permite focar o input ao clicar na barra inferior */
+    cursor: text;
+    /* Permite focar o input ao clicar na barra inferior */
 }
 
 .attach-btn-integrated {
@@ -627,7 +634,7 @@ body {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.chat-input:not(:placeholder-shown) ~ .input-footer-actions .send-btn-integrated {
+.chat-input:not(:placeholder-shown)~.input-footer-actions .send-btn-integrated {
     background: var(--accent-primary);
     color: white;
     box-shadow: 0 4px 10px rgba(0, 168, 232, 0.3);
@@ -657,7 +664,7 @@ body {
 }
 
 .action-bar {
-    padding: 12px 0 20px 0;
+    padding: 12px 0 0 0;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 12px;
@@ -666,8 +673,10 @@ body {
 }
 
 .action-btn {
-    padding: 10px 14px; /* Altura menor */
-    width: 100%; /* Ocupa largura total da coluna */
+    padding: 10px 14px;
+    /* Altura menor */
+    width: 100%;
+    /* Ocupa largura total da coluna */
     border-radius: 12px;
     border: 1px solid var(--border-color);
     background: var(--bg-secondary);
@@ -710,6 +719,7 @@ body {
     from {
         transform: rotate(0deg);
     }
+
     to {
         transform: rotate(360deg);
     }
@@ -853,7 +863,8 @@ body {
 
 .action-btn {
     flex: 1;
-    height: 44px; /* Shorter height as requested */
+    height: 44px;
+    /* Shorter height as requested */
     border-radius: 12px;
     border: 1px solid var(--border-color);
     background: var(--bg-primary);
@@ -878,8 +889,11 @@ body {
 
 /* Responsive */
 @media (max-width: 768px) {
+
     /* Impede zoom automático do iOS ao focar em inputs */
-    input, select, textarea {
+    input,
+    select,
+    textarea {
         font-size: 16px !important;
     }
 
@@ -887,11 +901,12 @@ body {
         flex-direction: column;
         gap: 8px;
     }
-    
+
     .action-btn {
         width: 100%;
         height: 40px;
     }
+
     :root {
         --header-height: 95px;
     }
@@ -904,7 +919,6 @@ body {
     .logo {
         width: 44px;
         height: 44px;
-        border-radius: 10px;
     }
 
     .header-title {
@@ -929,9 +943,9 @@ body {
         height: 100dvh;
         overflow: hidden;
         border-radius: 20px 20px 0 0;
-        box-shadow: 0 -10px 40px rgba(0,0,0,0.15);
+        box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.15);
     }
-    
+
     .sidebar {
         display: none;
     }
@@ -959,7 +973,8 @@ body {
 
     .chat-input {
         min-height: 120px !important;
-        max-height: 120px !important; /* Fixado para evitar que empurre os botões */
+        max-height: 120px !important;
+        /* Fixado para evitar que empurre os botões */
         overflow-y: auto !important;
     }
 
@@ -968,7 +983,7 @@ body {
         font-size: 11px;
         padding: 10px;
     }
-    
+
     .data-value {
         font-size: 12.5px;
         padding: 10px;
@@ -982,7 +997,7 @@ body {
     .header-title {
         font-size: 13px;
     }
-    
+
     /* Reveal Close button on mobile if it was hidden */
     .close-mobile {
         display: flex !important;

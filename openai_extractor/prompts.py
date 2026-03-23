@@ -133,7 +133,7 @@ EXTRACTION_SCHEMA = {
         "local_calibracao": {"type": ["string", "null"]},
         "software": {"type": ["string", "null"]},
         "condicao": {"type": ["string", "null"]},
-        "laboratorio": {"type": ["string", "null"]},
+        "laboratorio": {"type": ["string", "null"], "description": "Nome da empresa/laboratório EMISSOR do certificado (quem realizou a calibração). Normalmente aparece no cabeçalho ou rodapé do certificado como razão social, ex: 'QUALISUL SERVIÇOS EM METROLOGIA LTDA'. NÃO confundir com 'Local da Calibração' — esse campo é o NOME DA EMPRESA emissora, não a localidade."},
         "arquivo_origem": {"type": "string"},
         
         # Grandezas (ÚLTIMO)
@@ -245,6 +245,7 @@ INSTRUCOES:
     ],
     
     // Mantenha os dados brutos complexos em outras chaves
+    "laboratorio": "Nome da empresa/laboratorio EMISSOR do certificado (quem realizou a calibracao). Normalmente no cabecalho como razao social. REGRA: use o nome da empresa emissora, NAO o campo 'Local da Calibracao'.",
     "detalhes_calibracao": "Resumo textual das tabelas se nao conseguir estruturar",
     "observacoes": "Outras observacoes do certificado",
     "padroes_utilizados": "Lista de padroes utilizados na calibracao"

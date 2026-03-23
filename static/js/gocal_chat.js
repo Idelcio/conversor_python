@@ -19,6 +19,21 @@ function updateTokenCounter(tokenData) {
 let currentUserId = new URLSearchParams(window.location.search).get('user_id') || null;
 let currentFuncionarioId = new URLSearchParams(window.location.search).get('funcionario_id') || null;
 let currentPageContext = null;
+
+// Busca nome do funcionário e da empresa no banco via Flask
+(function loadUserContext() {
+    if (!currentUserId && !currentFuncionarioId) return;
+    const params = new URLSearchParams();
+    if (currentUserId) params.set('user_id', currentUserId);
+    if (currentFuncionarioId) params.set('funcionario_id', currentFuncionarioId);
+    fetch(`/api/user-context?${params}`)
+        .then(r => r.json())
+        .then(d => {
+            if (d.user_name) window.__metronUserName = d.user_name;
+            if (d.company_name) window.__metronCompanyName = d.company_name;
+        })
+        .catch(() => {});
+})();
 let metronBaseUrl = window.location.origin; // Atualizado pelo widget_loader via postMessage
 let hasPdfSessionContext = false; // Indica se o backend ja tem dados de PDF na sessao atual
 
@@ -111,7 +126,8 @@ function autoChecklistAprovar() {
             addBotMessage(
                 'Voce esta na tela de <strong>aprovacao</strong> e detectei o PDF do certificado.' +
                 '<br><br>Digite <strong>"preencher checklist"</strong> ou clique abaixo:' +
-                '<br><br><button onclick="executarChecklist()" style="padding:8px 16px; background:#4CAF50; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:500;">Preencher Checklist</button>'
+                '<br><br><button onclick="executarChecklist()" style="padding:8px 16px; background:#4CAF50; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:500;">Preencher Checklist</button>',
+                true
             );
         } else if (attempts >= 16) {
             clearInterval(waitForPdf);
@@ -157,6 +173,7 @@ window.addEventListener('message', (e) => {
         }
     }
 });
+
 
 // Listener para resposta de criacao de calibracao (vindo do widget_loader)
 window.addEventListener('message', (e) => {
@@ -325,27 +342,21 @@ function handleFiles(files) {
         rememberPdfInWidget(uploadedFiles[0], 'upload-manual');
     }
 
-    // SUGESTÃO DE LOTE SE > 3 PDFs
-    if (uploadedFiles.length > 3) {
-        const baseUrl = metronBaseUrl;
-        const loteParams = [];
-        if (currentUserId) loteParams.push(`user_id=${currentUserId}`);
-        if (currentFuncionarioId) loteParams.push(`funcionario_id=${currentFuncionarioId}`);
-        const loteUrl = `${baseUrl}/lote${loteParams.length > 0 ? '?' + loteParams.join('&') : ''}`;
-        addBotMessage(
-            `📦 Você selecionou <strong>${uploadedFiles.length} arquivos</strong>!<br><br>` +
-            `Para lotes grandes, recomendamos a <strong>página de Processamento em Lote</strong> ` +
-            `com acompanhamento visual detalhado.<br><br>` +
-            `<a href="${loteUrl}" target="_blank" rel="noopener" ` +
-            `style="display:inline-block; padding:10px 20px; background:linear-gradient(135deg, #667eea, #764ba2); ` +
-            `color:#fff; border-radius:8px; text-decoration:none; font-weight:600; font-size:13px; ` +
-            `box-shadow: 0 4px 12px rgba(102,126,234,0.3);">` +
-            `🚀 Abrir Processamento em Lote</a>` +
-            `<br><br><span style="font-size:12px; color:#888;">Ou continue aqui mesmo — os arquivos já estão carregados.</span>`,
-            true
-        );
-    }
-
+    // Indica a página de processamento para qualquer quantidade de PDFs
+    const _loteParams = [];
+    if (currentUserId) _loteParams.push(`user_id=${currentUserId}`);
+    if (currentFuncionarioId) _loteParams.push(`funcionario_id=${currentFuncionarioId}`);
+    const _loteUrl = `${metronBaseUrl}/lote${_loteParams.length > 0 ? '?' + _loteParams.join('&') : ''}`;
+    addBotMessage(
+        `📄 <strong>${uploadedFiles.length} arquivo(s)</strong> carregado(s).<br><br>` +
+        `Acesse a página de processamento para extrair e salvar os dados:<br><br>` +
+        `<a href="${_loteUrl}" target="_blank" rel="noopener" ` +
+        `style="display:inline-block; padding:10px 20px; background:linear-gradient(135deg, #00A8E8, #0077B6); ` +
+        `color:#fff; border-radius:8px; text-decoration:none; font-weight:600; font-size:13px; ` +
+        `box-shadow: 0 4px 12px rgba(0,168,232,0.3);">` +
+        `🚀 Processar Certificado(s)</a>`,
+        true
+    );
 
     // VISUAL FEEDBACK IMEDIATO
     const fileNames = uploadedFiles.map(f => f.name).join(', ');
@@ -370,7 +381,7 @@ function handleFiles(files) {
         `;
     }
 
-    addBotMessage(`✅ ${files.length} arquivo(s) pronto(s)! Clique em 'Extrair Dados' ou digite um comando.`);
+    addBotMessage(`✅ ${files.length} arquivo(s) pronto(s)! Clique no botão acima ou continue conversando.`);
 }
 
 

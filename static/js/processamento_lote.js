@@ -424,7 +424,7 @@
                 ${editField('Fabricante', inst.fabricante, 'fabricante', idx)}
                 ${editField('Modelo', inst.modelo, 'modelo', idx)}
                 ${editField('Nº Série', inst.numero_serie, 'numero_serie', idx)}
-                ${editField('Periodicidade (m)', inst.periodicidade, 'periodicidade', idx)}
+                ${editField('Periodicidade (m)', inst.periodicidade || 12, 'periodicidade', idx)}
                 ${editField('Localização', inst.localizacao, 'localizacao', idx)}
                 ${editField('Descrição', inst.descricao, 'descricao', idx, 'full')}
             </div>
@@ -437,10 +437,10 @@
             <div class="info-grid">
                 ${editField('Data Calibração', inst.data_calibracao, 'data_calibracao', idx)}
                 ${editField('Data Emissão', inst.data_emissao, 'data_emissao', idx)}
-                ${editField('Validade', inst.validade || inst.data_proxima_calibracao, 'validade', idx)}
+                ${editField('Validade', inst.validade || inst.data_proxima_calibracao || calcValidade(inst.data_calibracao, inst.periodicidade || 12), 'validade', idx)}
                 ${editField('Nº Certificado', inst.numero_certificado, 'numero_certificado', idx)}
                 ${editField('Laboratório', inst.laboratorio || inst.laboratorio_responsavel, 'laboratorio_responsavel', idx)}
-                ${editField('Motivo', inst.motivo_calibracao, 'motivo_calibracao', idx)}
+                ${editField('Motivo', inst.motivo_calibracao || 'Periodicidade', 'motivo_calibracao', idx)}
             </div>
         </div>`;
 
@@ -449,8 +449,8 @@
         <div class="info-block">
             <div class="info-block-title">ℹ️ Complementares</div>
             <div class="info-grid">
-                ${editField('Responsável', inst.responsavel, 'responsavel', idx)}
-                ${editField('Departamento', inst.departamento, 'departamento', idx)}
+                ${editField('Responsável', window.__metronUserName || '', 'responsavel', idx)}
+                ${editField('Departamento', window.__metronCompanyName || '', 'departamento', idx)}
                 ${editField('Criticidade', inst.criticidade, 'criticidade', idx)}
                 ${editField('Regra Decisão', inst.regra_decisao, 'regra_decisao', idx)}
             </div>
@@ -492,6 +492,15 @@
                 <span class="info-label">${label}</span>
                 <span class="info-value">${displayValue}</span>
             </div>`;
+    }
+
+    // Calcula validade somando periodicidade (meses) à data de calibração
+    function calcValidade(dataCal, periodicidade) {
+        if (!dataCal || dataCal === 'n/i') return null;
+        const d = new Date(dataCal);
+        if (isNaN(d.getTime())) return null;
+        d.setMonth(d.getMonth() + (parseInt(periodicidade) || 12));
+        return d.toISOString().split('T')[0];
     }
 
     // Campo editável com cor por criticidade
