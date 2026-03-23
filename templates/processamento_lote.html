@@ -44,13 +44,13 @@
                     <p class="brand-subtitle">Metron — Powered by Gocal</p>
                 </div>
             </div>
-            {% if user_name or user_id %}
+            {% if company_name or user_id %}
             <div style="color:rgba(255,255,255,0.85); font-size:13px; display:flex; align-items:center; gap:6px;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="opacity:0.8">
                     <circle cx="12" cy="8" r="4" stroke="white" stroke-width="2" />
                     <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="white" stroke-width="2" stroke-linecap="round" />
                 </svg>
-                <span>{{ user_name or ('ID: ' + user_id|string) }}</span>
+                <span>{{ company_name or ('ID: ' + user_id|string) }}</span>
             </div>
             {% endif %}
         </div>
