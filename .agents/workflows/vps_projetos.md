@@ -50,13 +50,26 @@
 
 ---
 
+### app_python4 — Metron (gocal.com.br)
+- **Diretório:** `/root/app_python4/`
+- **Porta:** 5004
+- **Serviço systemd:** `metron4.service`
+- **URL Metron:** https://metron.gocal.com.br
+- **Usado no Gocal:** `https://metron.gocal.com.br/static/js/widget_loader.js`
+- **Banco:** MySQL `u693215843_lab` em `srv1147.hstgr.io:3306`
+- **Git:** não — deploy manual copiando do app_python
+- **Nginx config:** `/etc/nginx/conf.d/metron.conf`
+
+---
+
 ## Resumo — Qual Metron cada ambiente usa
 
-| Ambiente Gocal       | Widget URL                                          | Metron       | Banco               |
-|----------------------|-----------------------------------------------------|--------------|---------------------|
-| Produção (gocal)     | `https://metron.gocal.site/static/js/widget_loader.js` | app_python   | u693215843_teste    |
-| Demo                 | `https://metron2.gocal.store/static/js/widget_loader.js` | app_python3 | u693215843_demo     |
-| Teste/homologação    | `http://46.202.148.205:5002/static/js/widget_loader.js`  | app_python2 | u693215843_teste    |
+| Ambiente Gocal       | Widget URL                                                       | Metron       | Banco               |
+|----------------------|------------------------------------------------------------------|--------------|---------------------|
+| gocal.com.br         | `https://metron.gocal.com.br/static/js/widget_loader.js`        | app_python4  | u693215843_lab      |
+| gocal (teste/site)   | `https://metron.gocal.site/static/js/widget_loader.js`          | app_python   | u693215843_teste    |
+| Demo (gocal.store)   | `https://metron2.gocal.store/static/js/widget_loader.js`        | app_python3  | u693215843_demo     |
+| Homologação          | `http://46.202.148.205:5002/static/js/widget_loader.js`         | app_python2  | u693215843_teste    |
 
 ---
 

@@ -99,3 +99,9 @@ ssh root@46.202.148.205 "cd /root/app_python && git pull origin main && cp app_o
 ```bash
 ssh root@46.202.148.205 "cd /root/app_python && git pull origin main && cp app_openai.py /root/app_python3/app_openai.py && cp static/js/gocal_chat.js /root/app_python3/static/js/gocal_chat.js && cp openai_extractor/extractor.py /root/app_python3/openai_extractor/extractor.py && cp openai_extractor/prompts.py /root/app_python3/openai_extractor/prompts.py && cp static/js/widget_loader.js /root/app_python3/static/js/widget_loader.js && cp templates/gocal_chat.html /root/app_python3/templates/gocal_chat.html && systemctl restart metron3.service && curl -s http://localhost:5003/health"
 ```
+
+### app_python4 (gocal.com.br — porta 5004)
+```bash
+ssh root@46.202.148.205 "cd /root/app_python && git pull origin main && cp app_openai.py /root/app_python4/app_openai.py && cp static/js/gocal_chat.js /root/app_python4/static/js/gocal_chat.js && cp openai_extractor/extractor.py /root/app_python4/openai_extractor/extractor.py && cp openai_extractor/prompts.py /root/app_python4/openai_extractor/prompts.py && cp static/js/widget_loader.js /root/app_python4/static/js/widget_loader.js && cp templates/gocal_chat.html /root/app_python4/templates/gocal_chat.html && systemctl restart metron4.service && curl -s http://localhost:5004/health"
+```
+> **Atenção:** nunca sobrescrever o `.env` do app_python4 — banco é `u693215843_lab`, diferente dos outros.
