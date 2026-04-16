@@ -103,11 +103,9 @@ class OpenAIExtractor:
             print("[IA] Modo Gráfico ativado!")
         elif is_checklist_request:
             # Modo Checklist: Analisa PDF e retorna JSON com true/false por item
-            final_text_prompt = """Voce e o METRON, assistente de metrologia da Gocal. Sua tarefa agora e analisar este CERTIFICADO DE CALIBRACAO e preencher um checklist de validacao.
+            final_text_prompt = """Voce e um assistente tecnico de metrologia e qualidade industrial. Analise o documento tecnico fornecido e verifique a presenca de cada item do checklist abaixo.
 
-TAREFA: Leia atentamente as imagens deste certificado de calibracao tecnico e verifique se cada criterio abaixo esta presente ou atendido no documento.
-
-Para cada item, retorne true se o certificado ATENDE ao criterio, ou false se NAO atende ou a informacao nao esta claramente presente.
+Para cada item, retorne true se a informacao ESTA presente no documento, ou false se NAO esta presente ou nao esta claramente identificada.
 
 RETORNE APENAS o JSON abaixo (sem markdown, sem texto extra, sem crases):
 {
@@ -128,22 +126,21 @@ RETORNE APENAS o JSON abaixo (sem markdown, sem texto extra, sem crases):
     "message": "Resumo da analise explicando o que foi encontrado e o que faltou"
 }
 
-CRITERIOS DE CADA ITEM DO CHECKLIST:
-1. Identificacao do Laboratorio: O laboratorio e acreditado (RBC/INMETRO ou equivalente)?
-2. Identificacao do Instrumento: O certificado contem tipo, marca, modelo, numero de serie, faixa de medicao e resolucao?
-3. Local e Cliente: Ha identificacao do cliente e local da calibracao (in loco ou em laboratorio)?
-4. Numero e Data do Certificado: O certificado tem numero unico e data de emissao?
-5. Etiqueta/Selo: Menciona selo de calibracao ou validade?
-6. Datas: A data de emissao e no maximo 7 dias apos a data de calibracao?
-7. Frequencia: A periodicidade/frequencia de calibracao esta definida?
-8. Condicoes Ambientais: Temperatura e umidade estao informadas?
-9. Procedimento: O metodo/procedimento de calibracao esta citado?
-10. Padroes: A rastreabilidade dos padroes esta citada?
-11. Assinatura: Tem assinatura do responsavel tecnico?
-12. Integridade: O instrumento esta em boas condicoes de uso?
+ITENS DO CHECKLIST:
+1. Identificacao do emissor: O documento identifica quem realizou a medicao/calibracao (empresa, laboratorio ou responsavel tecnico)?
+2. Identificacao do item medido: O documento contem tipo, codigo, modelo ou numero de serie do instrumento ou gabarito?
+3. Identificacao do cliente: Ha identificacao do cliente ou empresa solicitante?
+4. Numero e data do documento: O documento tem numero unico e data de emissao?
+5. Validade ou prazo: Menciona data de vencimento, validade ou proximo prazo?
+6. Datas coerentes: A data de emissao e proxima ou posterior a data da medicao/calibracao?
+7. Frequencia: A periodicidade ou frequencia de calibracao/verificacao esta definida?
+8. Condicoes do ambiente: Temperatura, umidade ou outras condicoes ambientais estao informadas?
+9. Procedimento ou metodo: O metodo, procedimento ou norma utilizada esta citada?
+10. Rastreabilidade: Ha referencia a padroes rastraveis ou acreditados?
+11. Assinatura ou aprovacao: Tem assinatura, carimbo ou indicacao do responsavel tecnico?
+12. Resultado ou parecer: O documento apresenta resultado, parecer (aprovado/reprovado) ou conclusao?
 
-Substitua true/false conforme sua analise real do documento. Marque false quando a informacao NAO estiver presente.
-IMPORTANTE: Esta e uma tarefa tecnica de metrologia/qualidade. Analise o documento e retorne SOMENTE o JSON."""
+Analise o documento visualmente e retorne SOMENTE o JSON. Nao adicione texto fora do JSON."""
             print("[IA] Modo CHECKLIST ativado!")
 
         elif is_extraction_request:
