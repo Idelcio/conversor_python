@@ -14,6 +14,13 @@
     let currentTaskId = null;
     let pollInterval = null;
 
+    function normalizeLoteResult(inst) {
+        const normalized = { ...(inst || {}) };
+        normalized.grandezas = [];
+        normalized.tabelas = [];
+        return normalized;
+    }
+
     // ============================================
     // REFERÊNCIAS DOM
     // ============================================
@@ -43,6 +50,12 @@
     const btnInserirBanco = document.getElementById('btnInserirBanco');
     const btnExportarJSON = document.getElementById('btnExportarJSON');
     const btnNovoLote = document.getElementById('btnNovoLote');
+    const pdfPreviewModal = document.getElementById('pdfPreviewModal');
+    const pdfPreviewBackdrop = document.getElementById('pdfPreviewBackdrop');
+    const pdfPreviewClose = document.getElementById('pdfPreviewClose');
+    const pdfPreviewFrame = document.getElementById('pdfPreviewFrame');
+    const pdfPreviewFilename = document.getElementById('pdfPreviewFilename');
+    const pdfPreviewNewTab = document.getElementById('pdfPreviewNewTab');
 
     // ============================================
     // UPLOAD HANDLERS
@@ -241,7 +254,7 @@
                     pollInterval = null;
 
                     if (status.results && status.results.length > 0) {
-                        extractedResults = status.results;
+                        extractedResults = status.results.map(normalizeLoteResult);
                         showResultsSection(status);
                     } else {
                         showToast('Processamento finalizado sem resultados.', 'error');
@@ -411,8 +424,58 @@
         tolerancia_processo: 'importante',
     };
 
+    const DATE_FIELDS = new Set([
+        'data_calibracao',
+        'data_emissao',
+        'validade',
+        'data_proxima_calibracao'
+    ]);
+
+    function normalizeDateForInput(value) {
+        if (!value) return '';
+        const raw = String(value).trim();
+        if (!raw || raw === 'n/i' || raw === 'N/I') return '';
+
+        let match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (match) return raw;
+
+        match = raw.match(/^(\d{2})[/-](\d{2})[/-](\d{4})$/);
+        if (match) {
+            const [, day, month, year] = match;
+            return `${year}-${month}-${day}`;
+        }
+
+        match = raw.match(/^(\d{4})[/-](\d{2})[/-](\d{2})$/);
+        if (match) {
+            const [, year, month, day] = match;
+            return `${year}-${month}-${day}`;
+        }
+
+        const parsed = new Date(raw);
+        if (!isNaN(parsed.getTime())) {
+            return parsed.toISOString().split('T')[0];
+        }
+
+        return '';
+    }
+
     function renderResultCardBody(inst, idx) {
         let html = '';
+        const pdfName = inst._pdf_filename || inst.arquivo_origem || `certificado_${idx + 1}.pdf`;
+
+        html += `
+        <div class="info-block">
+            <div class="info-block-title">📎 Documento</div>
+            <div class="pdf-inline-row">
+                <div class="pdf-inline-meta">
+                    <div class="pdf-inline-name">${pdfName}</div>
+                    <div class="pdf-inline-hint">Abra o PDF original para conferir os dados extraídos.</div>
+                </div>
+                <button class="pdf-inline-btn" type="button" onclick="window.__openResultPdf(${idx})">
+                    Ver PDF
+                </button>
+            </div>
+        </div>`;
 
         // ── Informações Básicas ──
         html += `
@@ -508,7 +571,9 @@
         const baseField = fieldName.includes('[') ? fieldName.replace(/grandezas\[\d+\]\./, '') : fieldName;
         const criticidade = CAMPOS_STATUS[baseField] || 'normal';
         const vazio = !value || value === 'n/i' || value === 'N/I' || String(value).trim() === '';
-        const displayValue = vazio ? '' : String(value);
+        const isDateField = DATE_FIELDS.has(baseField);
+        const displayValue = vazio ? '' : (isDateField ? normalizeDateForInput(value) : String(value));
+        const inputType = isDateField ? 'date' : 'text';
 
         let borderClass = '';
         let tag = '';
@@ -524,6 +589,7 @@
             <div class="info-item ${borderClass}" style="${style}">
                 <span class="info-label">${label} ${tag}</span>
                 <input class="info-input-edit ${borderClass}"
+                       type="${inputType}"
                        data-idx="${idx}"
                        data-field="${fieldName}"
                        value="${displayValue.replace(/"/g, '&quot;')}"
@@ -599,6 +665,44 @@
             toggle.classList.add('open');
         }
     };
+
+    window.__openResultPdf = function (idx) {
+        if (!currentTaskId) {
+            showToast('Esse lote não tem PDF disponível no momento.', 'error');
+            return;
+        }
+
+        const inst = extractedResults[idx] || {};
+        const pdfName = inst._pdf_filename || inst.arquivo_origem || `certificado_${idx + 1}.pdf`;
+        const pdfUrl = `/lote-pdf/${encodeURIComponent(currentTaskId)}/${idx}`;
+
+        pdfPreviewFilename.textContent = pdfName;
+        pdfPreviewFrame.src = pdfUrl;
+        pdfPreviewNewTab.href = pdfUrl;
+        pdfPreviewModal.hidden = false;
+        document.body.classList.add('pdf-modal-open');
+    };
+
+    function closePdfPreview() {
+        if (!pdfPreviewModal) return;
+        pdfPreviewModal.hidden = true;
+        pdfPreviewFrame.src = 'about:blank';
+        pdfPreviewNewTab.href = '#';
+        document.body.classList.remove('pdf-modal-open');
+    }
+
+    if (pdfPreviewClose) pdfPreviewClose.addEventListener('click', closePdfPreview);
+    if (pdfPreviewBackdrop) pdfPreviewBackdrop.addEventListener('click', closePdfPreview);
+    if (pdfPreviewNewTab) {
+        pdfPreviewNewTab.addEventListener('click', () => {
+            setTimeout(closePdfPreview, 50);
+        });
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && pdfPreviewModal && !pdfPreviewModal.hidden) {
+            closePdfPreview();
+        }
+    });
 
     // ============================================
     // AÇÕES DE RESULTADO

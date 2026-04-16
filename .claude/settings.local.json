@@ -22,7 +22,8 @@
       "Bash(sc query:*)",
       "Bash(Get-Service nginx)",
       "Bash(ssh:*)",
-      "Bash(cmd.exe /c \"dir C:\\\\Users\\\\Forest\\\\Projetos\\\\Labster\\\\Python\\\\leitor_conversor\\\\ 2>&1\")"
+      "Bash(cmd.exe /c \"dir C:\\\\Users\\\\Forest\\\\Projetos\\\\Labster\\\\Python\\\\leitor_conversor\\\\ 2>&1\")",
+      "Bash(powershell -Command \"Get-Process -Id 40232 | Format-List Id, Name, Path\")"
     ]
   }
 }

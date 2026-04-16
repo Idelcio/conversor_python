@@ -93,7 +93,7 @@ EXTRACTION_SCHEMA = {
     "type": "object",
     "properties": {
         # LINHA 1
-        "identificacao": {"type": "string", "description": "Tag ou código do instrumento. Procure por rótulos como 'Autenticação', 'Tag', 'Código', 'ID'. Priorize a identificação específica do instrumento."},
+        "identificacao": {"type": "string", "description": "Tag ou código do instrumento. Procure por rótulos como 'Autenticação', 'Tag', 'Código', 'ID', 'N° do Gabarito' ou 'Nº do Gabarito'. Em relatorios de calibracao de gabaritos/PolyWorks, use o valor de 'N° do Gabarito' como tag. Priorize a identificação específica do instrumento."},
         "nome": {"type": "string", "description": "Nome do equipamento (ex: Multímetro, Paquímetro)."},
         
         # LINHA 2
@@ -127,7 +127,7 @@ EXTRACTION_SCHEMA = {
         "data_calibracao": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
         "data_emissao": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
         "data_recebimento": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
-        "numero_certificado": {"type": "string", "description": "Número do certificado de calibração. Procure por 'Certificado de Calibração', 'Certificado nº', 'Folha nº'."},
+        "numero_certificado": {"type": "string", "description": "Número do certificado de calibração. Procure por 'Certificado de Calibração', 'Certificado nº', 'Folha nº' ou o código do cabeçalho. Em relatorios de calibracao de gabaritos/PolyWorks, use o valor do campo 'ML' (ex: 'ML: 1505/25')."},
         
         # Extras
         "local_calibracao": {"type": ["string", "null"]},
@@ -216,7 +216,7 @@ INSTRUCOES:
 2. Siga estritamente este formato de chaves:
 
 {
-    "identificacao": "Codigo de identificacao (Tag/Patrimonio). REGRA: Identifique o campo que representa a TAG do instrumento (codigo interno de identificacao). Normalmente aparece na seção 'Identificação do Instrumento' e, neste laboratório, é o valor após o rótulo 'Autenticação'. Priorize este campo sobre o numero do certificado.",
+    "identificacao": "Codigo de identificacao (Tag/Patrimonio). REGRA: Identifique o campo que representa a TAG do instrumento (codigo interno de identificacao). Normalmente aparece na seção 'Identificação do Instrumento' e, neste laboratório, é o valor após o rótulo 'Autenticação'. Em relatorios de calibracao de gabaritos/PolyWorks, a tag correta e o valor apos 'N° do Gabarito' ou 'Nº do Gabarito'. Priorize este campo sobre o numero do certificado.",
     "nome": "Nome do instrumento (ex: Paquimetro, Micrometro). Procure pelo nome principal do equipamento no certificado.",
     "fabricante": "Fabricante do instrumento",
     "modelo": "Modelo",
@@ -226,7 +226,7 @@ INSTRUCOES:
     "data_calibracao": "YYYY-MM-DD",
     "validade": "YYYY-MM-DD (se houver)",
     "periodicidade": "meses (numero)",
-    "numero_certificado": "Numero unico do certificado de calibracao. Normalmente no cabecalho ou em destaque como 'Certificado nº' ou 'Folha'.",
+    "numero_certificado": "Numero unico do certificado de calibracao. Normalmente no cabecalho ou em destaque como 'Certificado nº' ou 'Folha'. Em relatorios de calibracao de gabaritos/PolyWorks, o numero do certificado e o valor do campo 'ML' no cabecalho.",
     
     "departamento": "Cliente/Departamento",
     "responsavel": "Tecnico responsavel/Signatario",

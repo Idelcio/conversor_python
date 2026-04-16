@@ -176,6 +176,25 @@
 
     <!-- Modal de Validação é criado dinamicamente por validation_gocal.js -->
 
+    <div class="pdf-preview-modal" id="pdfPreviewModal" hidden>
+        <div class="pdf-preview-backdrop" id="pdfPreviewBackdrop"></div>
+        <div class="pdf-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="pdfPreviewTitle">
+            <div class="pdf-preview-header">
+                <div class="pdf-preview-meta">
+                    <h3 class="pdf-preview-title" id="pdfPreviewTitle">PDF do lote</h3>
+                    <p class="pdf-preview-filename" id="pdfPreviewFilename"></p>
+                </div>
+                <div class="pdf-preview-actions">
+                    <a class="pdf-preview-link" id="pdfPreviewNewTab" href="#" target="_blank" rel="noopener">Nova aba</a>
+                    <button class="pdf-preview-close" id="pdfPreviewClose" type="button">Fechar</button>
+                </div>
+            </div>
+            <div class="pdf-preview-body">
+                <iframe class="pdf-preview-frame" id="pdfPreviewFrame" title="Visualização do PDF"></iframe>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notifications -->
     <div class="toast-container" id="toastContainer"></div>
 
