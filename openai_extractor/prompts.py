@@ -94,14 +94,14 @@ EXTRACTION_SCHEMA = {
     "properties": {
         # LINHA 1
         "identificacao": {"type": "string", "description": "Tag ou código do instrumento. Procure por rótulos como 'Autenticação', 'Tag', 'Código', 'ID', 'N° do Gabarito' ou 'Nº do Gabarito'. Em relatorios de calibracao de gabaritos/PolyWorks, use o valor de 'N° do Gabarito' como tag. Priorize a identificação específica do instrumento."},
-        "nome": {"type": "string", "description": "Nome do equipamento (ex: Multímetro, Paquímetro)."},
-        
+        "nome": {"type": "string", "description": "Nome do equipamento (ex: Multímetro, Paquímetro). Em relatórios de calibração de gabaritos/PolyWorks, use o valor de 'N° do Gabarito' ou 'Nº do Gabarito' como nome (igual à identificação)."},
+
         # LINHA 2
         "tipo_familia": {"type": "string", "description": "Tipo ou família do instrumento"},
         "fabricante": {"type": "string", "description": "Fabricante"},
-        
+
         # LINHA 3
-        "modelo": {"type": "string", "description": "Modelo"},
+        "modelo": {"type": "string", "description": "Modelo. Em relatórios de calibração de gabaritos/PolyWorks, use o valor do campo 'Produto' como modelo."},
         "numero_serie": {"type": "string", "description": "Número de série"},
         
         # LINHA 4
@@ -217,9 +217,9 @@ INSTRUCOES:
 
 {
     "identificacao": "Codigo de identificacao (Tag/Patrimonio). REGRA: Identifique o campo que representa a TAG do instrumento (codigo interno de identificacao). Normalmente aparece na seção 'Identificação do Instrumento' e, neste laboratório, é o valor após o rótulo 'Autenticação'. Em relatorios de calibracao de gabaritos/PolyWorks, a tag correta e o valor apos 'N° do Gabarito' ou 'Nº do Gabarito'. Priorize este campo sobre o numero do certificado.",
-    "nome": "Nome do instrumento (ex: Paquimetro, Micrometro). Procure pelo nome principal do equipamento no certificado.",
+    "nome": "Nome do instrumento (ex: Paquimetro, Micrometro). Em relatorios de calibracao de gabaritos/PolyWorks, use o valor de 'N° do Gabarito' ou 'Nº do Gabarito' como nome (igual à identificacao).",
     "fabricante": "Fabricante do instrumento",
-    "modelo": "Modelo",
+    "modelo": "Modelo. Em relatorios de calibracao de gabaritos/PolyWorks, use o valor do campo 'Produto' como modelo.",
     "numero_serie": "Numero de serie",
     "descricao": "Descricao basica",
     

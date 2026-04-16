@@ -224,7 +224,16 @@ IMPORTANTE: Esta e uma tarefa tecnica de metrologia/qualidade. Analise o documen
                     self.token_usage['total_tokens'] += response2.usage.total_tokens
                 content = response2.choices[0].message.content
                 print(f"[IA] Retry resposta ({len(content)} caracteres): {content[:500]}")
-            
+
+                # Se ainda recusou após retry, retorna erro amigável
+                if any(p in content.lower() for p in recusa_patterns):
+                    print("[IA] Recusa persistente após retry. Retornando erro amigável.")
+                    return {
+                        "is_text_response": True,
+                        "descricao": "Não foi possível analisar este documento automaticamente. Por favor, preencha os dados manualmente ou tente com outro PDF.",
+                        "arquivo_origem": filename or os.path.basename(pdf_path)
+                    }
+
             # Se for uma conversa, retorna o texto diretamente sem tentar converter para JSON
             if is_conversational_request:
                 print("[IA] Resposta conversacional, retornando como texto.")
