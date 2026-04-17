@@ -123,7 +123,7 @@ RETORNE APENAS o JSON abaixo (sem markdown, sem texto extra, sem crases):
         "11": true,
         "12": true
     },
-    "message": "Resumo da analise explicando o que foi encontrado e o que faltou"
+    "message": "Escreva um resumo em markdown (2-3 frases) destacando o que foi encontrado e o que esta ausente. Use **negrito** para os pontos principais. Finalize sempre com a linha: _⚠️ Esta analise foi gerada por IA e pode conter imprecisoes. Confirme os dados antes de aprovar._"
 }
 
 ITENS DO CHECKLIST:
